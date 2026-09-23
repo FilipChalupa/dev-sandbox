@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Starts the project's dev server without a person typing anything: guesses
+# from package.json (dev / start / serve / preview scripts, installs
+# dependencies first when node_modules is missing), falls back to a static
+# server for plain HTML, and as a last resort asks Claude to figure it out.
+# The server runs in a tmux session "dev" so it survives this command.
+set -uo pipefail
+source sandbox-lib
+cd "$SANDBOX_WORKSPACE" || exit 1
+
+if tmux has-session -t dev 2>/dev/null; then
+	echo "dev server session already running (sandbox-dev-stop to stop it)"
+	exit 0
+fi
+
+wait_for_port() {
+	for _ in $(seq 1 "${1:-60}"); do
+		p="$(sandbox-ports | head -n 1)"
+		[ -n "$p" ] && { echo "$p"; return 0; }
+		sleep 1
+	done
+	return 1
+}
+
+cmd=""
+if [ -f package.json ]; then
+	script="$(jq -r '.scripts | keys[]' package.json 2>/dev/null | grep -m1 -x -E 'dev|start|serve|preview' || true)"
+	if [ -n "$script" ]; then
+		pm=npm
+		[ -f pnpm-lock.yaml ] && pm=pnpm
+		[ -f yarn.lock ] && pm=yarn
+		[ -f bun.lockb ] || [ -f bun.lock ] && pm=bun
+		install=""
+		[ -d node_modules ] || install="$pm install && "
+		cmd="${install}${pm} run ${script}"
+	fi
+fi
+if [ -z "$cmd" ] && [ -f index.html ]; then
+	cmd="python3 -m http.server 3000 --bind 127.0.0.1"
+fi
+
+if [ -n "$cmd" ]; then
+	echo "starting: $cmd"
+	: > "$(state_file dev.log)"
+	tmux new-session -d -s dev -c "$SANDBOX_WORKSPACE" "bash -lc '$cmd' 2>&1 | tee -a $(state_file dev.log)"
+	if port="$(wait_for_port 90)"; then
+		write_state upstream-port "$port"
+		sandbox-caddy-reload >/dev/null 2>&1 || true
+		echo "dev server listens on port $port, preview: $SANDBOX_PREVIEW_URL"
+		exit 0
+	fi
+	echo "nothing started listening within 90 s; last output:"
+	tail -n 15 "$(state_file dev.log)"
+	exit 1
+fi
+
+# No recognizable project: let Claude work it out (one non-interactive run).
+echo "no package.json script or index.html found, asking Claude…"
+claude_logged_in || { echo "Claude is not logged in"; exit 1; }
+timeout 240 claude -p --permission-mode bypassPermissions \
+	"Start this project's development server so that it keeps running after you finish (use a tmux session named dev: tmux new-session -d -s dev '<command>'). Read the README and config files to find out how. Do not change project files. When something listens on a port, run: sandbox-preview <port>. Reply with one short line saying what you started and on which port, or why it is not possible." 2>&1 | tail -n 5
+if port="$(wait_for_port 5)"; then
+	echo "dev server listens on port $port, preview: $SANDBOX_PREVIEW_URL"
+	exit 0
+fi
+exit 1

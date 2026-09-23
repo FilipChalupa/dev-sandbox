@@ -56,6 +56,8 @@ can start sessions in it. Status for the manager is in `/state/status.json`.
 - `sandbox-preview <port>`: point the preview at the dev server's port.
 - `sandbox-share [<port>]`: start the public tunnel, print URL and credentials.
 - `sandbox-unshare`: stop the tunnel.
+- `sandbox-dev-start` / `sandbox-dev-stop`: start or stop the project's dev
+  server (package.json scripts, static HTML, or Claude as a fallback).
 - `sandbox-save [message]`: commit everything and push the working branch.
 - `sandbox-screenshot [path|url] [out.png] [--mobile]`: render the preview with
   headless Chromium (for Claude to check its work).

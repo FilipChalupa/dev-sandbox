@@ -253,8 +253,10 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 			{modal?.kind === 'diagnostics' && <Diagnostics lang={lang} onClose={close} />}
 			{modal?.kind === 'changes' && <Changes s={list?.find((x) => x.name === modal.name)} name={modal.name} onClose={close} />}
 			{modal?.kind === 'qr' && (
-				<Modal title={modal.title} onClose={close}>
-					<Qr text={modal.text} size={360} />
+				<Modal title={modal.title} onClose={close} className="qr-modal">
+					<Qr text={modal.text} size={640} />
+					<p className="muted small">{t('qrContains')}</p>
+					<div className="access-row"><span className="k" /><code className="v">{modal.text}</code><Copy text={modal.text} /></div>
 				</Modal>
 			)}
 			{modal?.kind === 'delete' && (
@@ -290,7 +292,7 @@ function Qr({ text, size = 160, onClick }: { text: string; size?: number; onClic
 		QRCode.toDataURL(text, { margin: 1, width: size }).then(setSrc).catch(() => setSrc(''))
 	}, [text, size])
 	if (!src) return null
-	return <img className={`qr${onClick ? ' clickable' : ''}`} src={src} alt={text} title={onClick ? t('enlargeQr') : t('qrHint')} onClick={onClick} style={{ width: size > 200 ? size : undefined, height: size > 200 ? size : undefined }} />
+	return <img className={`qr${onClick ? ' clickable' : ''}${size > 200 ? ' big' : ''}`} src={src} alt={text} title={onClick ? t('enlargeQr') : t('qrHint')} onClick={onClick} />
 }
 
 const withAuth = (url: string, user: string, pw: string) => url.replace(/^(https?:\/\/)/, `$1${encodeURIComponent(user)}:${encodeURIComponent(pw)}@`)
@@ -369,18 +371,19 @@ function SandboxCard({ s, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
 	const st = s.status
 	const stage = stageOf(s)
 	const running = s.container.running
-	const [busy, setBusy] = useState<'share' | 'save' | ''>('')
+	const [busy, setBusy] = useState<'share' | 'save' | 'dev' | ''>('')
 	useMirrorLoading(busy !== '')
 	const [expanded, setExpanded] = useState<boolean | null>(null)
 	const open = expanded ?? running
 	const working = Boolean(st && isRecent(st.lastActivity, 60_000))
 
-	const action = async (what: 'share' | 'unshare' | 'save' | 'restart-claude') => {
-		setBusy(what === 'unshare' ? 'share' : what === 'restart-claude' ? '' : what)
+	const action = async (what: 'share' | 'unshare' | 'save' | 'restart-claude' | 'dev-start' | 'dev-stop') => {
+		setBusy(what === 'unshare' ? 'share' : what === 'dev-start' ? 'dev' : what === 'restart-claude' || what === 'dev-stop' ? '' : what)
 		try {
 			const r = await api.action(s.name, what)
 			if (what === 'save') toast('ok', `${t('sent')} (${r.output.split('\n').pop()})`)
-			if (what === 'restart-claude') toast('ok', r.output)
+			if (what === 'restart-claude' || what === 'dev-stop') toast('ok', r.output)
+			if (what === 'dev-start') toast('ok', `${t('devStarted')} ${r.output.split('\n').pop() ?? ''}`)
 		} catch (e) {
 			toast('error', humanizeError(e instanceof Error ? e.message : String(e), t))
 		} finally {
@@ -406,6 +409,7 @@ function SandboxCard({ s, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
 		...(running ? [{ label: t('stop'), icon: 'stop', onClick: () => run(() => api.stop(s.name)) }] : []),
 		{ label: t('edit'), icon: 'settings', onClick: () => setModal({ kind: 'edit', s }) },
 		{ label: t('changesToday'), icon: 'history', onClick: () => setModal({ kind: 'changes', name: s.name }), disabled: !running },
+		{ label: t('devStop'), icon: 'stop', onClick: () => action('dev-stop'), disabled: !(running && st?.preview.devServerUp) },
 		'sep' as const,
 		{ label: t('terminal'), icon: 'terminal', onClick: () => setModal({ kind: 'terminal', name: s.name, cmd: 'shell' }), disabled: !running },
 		{ label: t('restartClaude'), icon: 'restart', onClick: () => action('restart-claude'), disabled: !running },
@@ -423,7 +427,13 @@ function SandboxCard({ s, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
 				<h2>{s.name}</h2>
 				{statusPill}
 				{running && st && stage.step === 3 && (
-					<Pill tone={st.preview.devServerUp ? 'on' : 'off'}>{st.preview.devServerUp ? t('devServerUp') : t('devServerDown')}</Pill>
+					st.preview.devServerUp ? (
+						<Pill tone="on">{t('devServerUp')}</Pill>
+					) : busy === 'dev' ? (
+						<Pill tone="work" pulse>{t('devStarting')}</Pill>
+					) : (
+						<Pill tone="off">{t('devServerDown')} · <button className="pill-link" onClick={() => action('dev-start')}>{t('devStart')}</button></Pill>
+					)
 				)}
 				{running && st && !st.claude.serverRunning && stage.step === 3 && <Pill tone="error">{t('claudeOffline')}</Pill>}
 				<span className="grow" />
@@ -481,8 +491,8 @@ function SandboxCard({ s, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
 								{st.git.ahead > 0 && <span className="warn-text">{t('unpushed', { n: st.git.ahead })}</span>}
 								{st.git.dirty === 0 && st.git.ahead === 0 && <span className="ok-text"><Icon name="check" size={13} /> {t('clean')}</span>}
 								{st.git.lastCommit && <span className="muted">{t('lastCommit')}: {st.git.lastCommit}</span>}
-								{st.lastActivity && <span className="muted">{t('lastActivity')}: <Rel iso={st.lastActivity} lang={lang} /></span>}
 							</div>
+							{st.lastActivity && <div className="git"><span className="muted">{t('lastActivity')}: <Rel iso={st.lastActivity} lang={lang} /></span></div>}
 						</>
 					)}
 				</>

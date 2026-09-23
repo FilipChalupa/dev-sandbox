@@ -116,6 +116,15 @@ app.post('/api/sandboxes/:name/share', action(['sandbox-share']))
 app.post('/api/sandboxes/:name/unshare', action(['sandbox-unshare']))
 app.post('/api/sandboxes/:name/save', action(['sandbox-save', 'Changes from the sandbox']))
 app.post('/api/sandboxes/:name/restart-claude', action(['sandbox-claude-start']))
+app.post('/api/sandboxes/:name/dev-start', async (c) => {
+	try {
+		const r = await dk.run(c.req.param('name'), ['sandbox-dev-start'], 300_000)
+		return json({ ok: r.code === 0, output: r.output }, r.code === 0 ? 200 : 400)
+	} catch (e) {
+		return fail(e)
+	}
+})
+app.post('/api/sandboxes/:name/dev-stop', action(['sandbox-dev-stop']))
 
 app.get('/api/sandboxes/:name/login', (c) => json(login.status(c.req.param('name'))))
 app.post('/api/sandboxes/:name/login', async (c) => {

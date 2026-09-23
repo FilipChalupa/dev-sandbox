@@ -21,9 +21,11 @@ when a request is ambiguous.
 ## Running the project
 
 - Find out how to run it from the repository (README, `package.json`, etc.).
-- Start dev servers so that they keep running after your command returns
-  (for example in a `tmux` session or with `nohup … &`), and let them listen
-  on `127.0.0.1` or `0.0.0.0`.
+- `sandbox-dev-start` starts the dev server for common setups (package.json
+  scripts, plain HTML) in a tmux session named `dev`; `sandbox-dev-stop`
+  stops it. When it cannot, start the server yourself so that it keeps
+  running after your command returns (a `tmux` session or `nohup … &`),
+  listening on `127.0.0.1` or `0.0.0.0`.
 - The person sees the project at **${SANDBOX_PREVIEW_URL}**. That address
   proxies to whatever port the dev server listens on inside the sandbox; the
   sandbox detects it on its own. Only if it picks the wrong one, run

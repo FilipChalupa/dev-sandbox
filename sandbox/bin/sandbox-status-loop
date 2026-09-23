@@ -4,5 +4,10 @@ source sandbox-lib
 while true; do
 	sandbox-status > "$(state_file status.json.tmp)" 2>/dev/null \
 		&& mv "$(state_file status.json.tmp)" "$(state_file status.json)"
+	# The server redraws its terminal constantly; keep the piped log small.
+	log="$(state_file claude.log)"
+	if [ -f "$log" ] && [ "$(stat -c %s "$log")" -gt 1000000 ]; then
+		tail -c 200000 "$log" > "$log.tmp" && cat "$log.tmp" > "$log" && rm -f "$log.tmp"
+	fi
 	sleep 5
 done

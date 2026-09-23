@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Stops the dev server started by sandbox-dev-start.
+source sandbox-lib
+if tmux has-session -t dev 2>/dev/null; then
+	tmux kill-session -t dev
+	echo "dev server stopped"
+else
+	echo "no dev server session"
+fi

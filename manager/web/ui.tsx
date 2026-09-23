@@ -145,6 +145,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
 // "3 min ago" with the absolute time on hover; re-renders every 30 s.
 export function Rel({ iso, lang }: { iso: string; lang: string }) {
+	const t = useT()
 	const [, tick] = useState(0)
 	useEffect(() => {
 		const id = setInterval(() => tick((n) => n + 1), 30_000)
@@ -155,7 +156,7 @@ export function Rel({ iso, lang }: { iso: string; lang: string }) {
 	const abs = Math.abs(ms)
 	const rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto' })
 	const text =
-		abs < 60_000 ? rtf.format(Math.round(ms / 1000), 'second')
+		abs < 60_000 ? t('justNow')
 		: abs < 3600_000 ? rtf.format(Math.round(ms / 60_000), 'minute')
 		: abs < 86400_000 ? rtf.format(Math.round(ms / 3600_000), 'hour')
 		: rtf.format(Math.round(ms / 86400_000), 'day')

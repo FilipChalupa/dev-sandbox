@@ -64,7 +64,7 @@ const cs = {
 	stepLogin: 'Přihlásit Claude',
 	stepOpen: 'Otevřít v claude.ai a začít',
 	devServerUp: 'server projektu běží',
-	devServerDown: 'server projektu neběží (řekni Claudovi, ať ho spustí)',
+	devServerDown: 'server projektu neběží',
 	claudeOffline: 'Claude server je offline',
 	loginTitle: 'Přihlášení Claude',
 	loginIntro: 'Otevři odkaz, přihlas se svým účtem a zkopíruj sem kód, který se zobrazí.',
@@ -139,6 +139,12 @@ const cs = {
 	collapse: 'Sbalit',
 	expand: 'Rozbalit',
 	enlargeQr: 'Zvětšit QR kód',
+	devStart: 'spustit',
+	devStarting: 'spouštím server projektu…',
+	devStop: 'Zastavit server projektu',
+	devStarted: 'Server projektu běží.',
+	qrContains: 'QR kód obsahuje adresu i s uživatelem a heslem, telefon se přihlásí sám.',
+	justNow: 'právě teď',
 }
 const en: Dictionary = {
 	title: 'Sandboxes',
@@ -203,7 +209,7 @@ const en: Dictionary = {
 	stepLogin: 'Log in to Claude',
 	stepOpen: 'Open in claude.ai and start',
 	devServerUp: 'project server is running',
-	devServerDown: 'project server is not running (ask Claude to start it)',
+	devServerDown: 'project server is not running',
 	claudeOffline: 'Claude server is offline',
 	loginTitle: 'Claude login',
 	loginIntro: 'Open the link, sign in with your account and paste the code it shows here.',
@@ -278,6 +284,12 @@ const en: Dictionary = {
 	collapse: 'Collapse',
 	expand: 'Expand',
 	enlargeQr: 'Enlarge QR code',
+	devStart: 'start it',
+	devStarting: 'starting the project server…',
+	devStop: 'Stop project server',
+	devStarted: 'The project server is running.',
+	qrContains: 'The QR code holds the address with the user and password, the phone logs in by itself.',
+	justNow: 'just now',
 }
 
 // Add a language: a new dictionary above and one line here.

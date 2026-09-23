@@ -51,7 +51,7 @@ export const api = {
 	update_image: () => call<UpdateProgress>('POST', '/api/update'),
 	update_progress: () => call<UpdateProgress>('GET', '/api/update'),
 	self_update: () => call<{ ok: boolean }>('POST', '/api/self-update'),
-	action: (name: string, what: 'share' | 'unshare' | 'save' | 'restart-claude') =>
+	action: (name: string, what: 'share' | 'unshare' | 'save' | 'restart-claude' | 'dev-start' | 'dev-stop') =>
 		call<{ ok: boolean; output: string }>('POST', `/api/sandboxes/${name}/${what}`),
 	login: {
 		status: (name: string) => call<LoginState | null>('GET', `/api/sandboxes/${name}/login`),

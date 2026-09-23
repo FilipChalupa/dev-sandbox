@@ -25,11 +25,13 @@ fi
 if tunnel_running; then tunnel="$(tunnel_url)"; else tunnel=""; fi
 if grep -qx "$(upstream_port)" <<<"$(sandbox-ports)"; then dev_up=true; else dev_up=false; fi
 if tmux has-session -t claude 2>/dev/null; then tmux_up=true; else tmux_up=false; fi
-# Activity: the Claude pane changes while sessions work; the workspace index
-# changes when files are committed; upstream-port changes when servers start.
+# Activity: Claude appends to a session transcript whenever it works. The
+# server's own terminal output changes even when idle and the git index is
+# touched by every start, so neither counts.
 activity=0
-for f in "$(state_file claude.log)" "$SANDBOX_WORKSPACE/.git/index" "$(state_file upstream-port)" "$(state_file tunnel-url)"; do
-	[ -e "$f" ] || continue
+transcripts="$CLAUDE_CONFIG_DIR/projects/$(printf '%s' "$SANDBOX_WORKSPACE" | tr '/' '-')"
+for f in "$transcripts"/*.jsonl "$(state_file tunnel-url)"; do
+	[ -s "$f" ] || continue   # the server pre-creates an empty transcript on every start
 	m="$(stat -c %Y "$f" 2>/dev/null || echo 0)"
 	[ "$m" -gt "$activity" ] && activity="$m"
 done
