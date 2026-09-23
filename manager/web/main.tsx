@@ -448,6 +448,25 @@ function folderPath(hostDir: string, name: string) {
 	return win ? full : full.replace(/^\/(Users|home)\/[^/]+/, '~')
 }
 
+// Web links for a repository, its branch and a commit, by hosting provider.
+function repoLinks(repoUrl: string, branch: string, sha: string) {
+	let url = repoUrl.trim()
+	url = url.replace(/^git@([^:]+):(.+)$/, 'https://$1/$2').replace(/^ssh:\/\/git@([^/]+)\/(.+)$/, 'https://$1/$2')
+	try {
+		const u = new URL(url)
+		u.username = ''
+		u.password = ''
+		const base = `${u.protocol}//${u.host}${u.pathname.replace(/\.git$/, '').replace(/\/$/, '')}`
+		const b = encodeURIComponent(branch)
+		if (u.host === 'github.com') return { repo: base, branch: `${base}/tree/${b}`, commit: sha ? `${base}/commit/${sha}` : '' }
+		if (u.host === 'bitbucket.org') return { repo: base, branch: `${base}/branch/${b}`, commit: sha ? `${base}/commits/${sha}` : '' }
+		if (u.host === 'gitlab.com') return { repo: base, branch: `${base}/-/tree/${b}`, commit: sha ? `${base}/-/commit/${sha}` : '' }
+		return { repo: base, branch: '', commit: '' }
+	} catch {
+		return { repo: '', branch: '', commit: '' }
+	}
+}
+
 const platform = /Mac/i.test(navigator.platform) ? 'mac' : /Win/i.test(navigator.platform) ? 'win' : 'other'
 
 function SandboxCard({ s, usage, host, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
@@ -515,6 +534,8 @@ function SandboxCard({ s, usage, host, lang, lanHost, lanHosts, onLanHost, run, 
 		}
 	}
 
+	const links = repoLinks(s.repoUrl, st?.git.branch || s.branch, st?.git.lastCommit?.split(' ')[0] ?? '')
+
 	const statusPill =
 		!running && s.failure ? <Pill tone="error">{t('failed')}</Pill>
 		: !running ? <Pill tone="off">{t('stopped')}</Pill>
@@ -575,8 +596,8 @@ function SandboxCard({ s, usage, host, lang, lanHost, lanHosts, onLanHost, run, 
 			{open && (
 				<>
 					<div className="meta">
-						<span><Icon name="git" size={13} /> {s.repoUrl ? s.repoUrl.replace(/^https?:\/\//, '') : t('noRemote')}</span>
-						<span>{t('branch')}: <code>{st?.git.branch || s.branch}</code></span>
+						<span><Icon name="git" size={13} /> {s.repoUrl ? (links.repo ? <a className="meta-link" href={links.repo} target="_blank" rel="noreferrer">{s.repoUrl.replace(/^https?:\/\//, '')}</a> : s.repoUrl) : t('noRemote')}</span>
+						<span>{t('branch')}: {links.branch ? <a href={links.branch} target="_blank" rel="noreferrer"><code>{st?.git.branch || s.branch}</code></a> : <code>{st?.git.branch || s.branch}</code>}</span>
 						<button
 							className="meta-link"
 							title={host.helper ? t('openFolder', { app: platform === 'mac' ? t('appFinder') : platform === 'win' ? t('appExplorer') : t('appFiles') }) : t('copyFolder')}
@@ -646,7 +667,12 @@ function SandboxCard({ s, usage, host, lang, lanHost, lanHosts, onLanHost, run, 
 								{st.git.dirty > 0 && <span className="warn-text">{t('uncommitted', { n: st.git.dirty })}</span>}
 								{st.git.ahead > 0 && <span className="warn-text">{t('unpushed', { n: st.git.ahead })}</span>}
 								{st.git.dirty === 0 && st.git.ahead === 0 && <span className="ok-text"><Icon name="check" size={13} /> {t('clean')}</span>}
-								{st.git.lastCommit && <span className="muted">{t('lastCommit')}: {st.git.lastCommit}</span>}
+								{st.git.lastCommit && (
+									<span className="muted">
+										{t('lastCommit')}:{' '}
+										{links.commit ? <a className="meta-link" href={links.commit} target="_blank" rel="noreferrer">{st.git.lastCommit}</a> : st.git.lastCommit}
+									</span>
+								)}
 							</div>
 							{st.lastActivity && <div className="git"><span className="muted">{t('lastActivity')}: <Rel iso={st.lastActivity} lang={lang} /></span></div>}
 						</>
