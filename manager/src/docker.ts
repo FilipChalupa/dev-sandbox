@@ -155,6 +155,14 @@ export async function followLogs(name: string, onLine: (text: string) => void, t
 // Replace the running manager with a fresh container from the newest image.
 // The manager cannot replace itself while running, so it pulls the image and
 // hands the swap to a short-lived helper container started from that image.
+export async function selfImage() {
+	try {
+		return (await docker.getContainer(os.hostname()).inspect()).Config.Image
+	} catch {
+		return ''
+	}
+}
+
 export async function selfUpdate() {
 	const self = await docker.getContainer(os.hostname()).inspect()
 	const image = self.Config.Image
@@ -175,6 +183,23 @@ export async function selfUpdate() {
 		HostConfig: { Binds: ['/var/run/docker.sock:/var/run/docker.sock'], AutoRemove: true },
 	})
 	await helper.start()
+}
+
+export async function diagnostics() {
+	const [version, info] = await Promise.all([docker.version(), docker.info()])
+	const images: Record<string, unknown> = {}
+	for (const name of [config.image, await selfImage()].filter(Boolean)) {
+		try {
+			const i = await docker.getImage(name).inspect()
+			images[name] = { created: i.Created, sizeMb: Math.round(i.Size / 1e6), digest: (i.RepoDigests ?? [])[0]?.split('@')[1] ?? '' }
+		} catch {
+			images[name] = { missing: true }
+		}
+	}
+	return {
+		docker: { version: version.Version, apiVersion: version.ApiVersion, os: info.OperatingSystem, arch: info.Architecture, cpus: info.NCPU, memoryGb: Math.round((info.MemTotal / 1024 ** 3) * 10) / 10 },
+		images,
+	}
 }
 
 // Interactive exec for the browser terminal.

@@ -81,7 +81,15 @@ UI:
 - a live log, "Update" (pulls the sandbox image) and "Update manager" (the
   manager pulls its image and a helper container swaps it out),
 - QR codes for the shared URL and, when enabled, a LAN preview link
-  (`http://<mac-name>.local:<port>`, basic auth) for a phone on the same Wi-Fi,
+  (`http://<mac-ip>:<port>`, basic auth) for a phone on the same Wi-Fi; the
+  Mac's address comes from a launchd job the installer sets up, which writes
+  `.manager/host.json` every minute (a container cannot see the host's address),
+- "What changed today": today's commits and the files being worked on,
+- a "new version" badge on the update buttons, from comparing the local image
+  digest with the registry,
+- a diagnostics page: manager version and build, Docker version and
+  resources, host address, disk space, images, sandboxes with uptime, last
+  activity and Claude version,
 - per sandbox memory and CPU limits, and an idle stop (hours without Claude
   activity, git commits or server changes),
 - English and Czech, switchable.
@@ -106,6 +114,9 @@ Processes inside:
   pushes to the sandbox's own branch: no other branches, no force, no delete,
 - `sandbox-screenshot`: headless Chromium render of the preview (desktop or
   phone viewport) so Claude can look at its own changes,
+- the Playwright MCP server (`playwright-mcp`, driving the system Chromium),
+  registered in the shared Claude config, so Claude can navigate, click and
+  read pages,
 - `sandbox-port-watch`: follows whatever port the dev server listens on and
   points Caddy at it, so nothing has to be configured per project,
 - `sandbox-save`: commit everything and push (used by autosave and the UI),
@@ -164,5 +175,6 @@ coming through the tunnel.
    tunnel sharing verified by hand.
 2. Done: manager with list, new, start/stop, claude.ai link, preview link.
 3. Done: embedded terminal, editing repository/token, autosave, image update.
-4. Done: installer, GitHub Actions for the images. Open: a real end-to-end
-   run on a Mac with a Team account, and a user guide with screenshots.
+4. Done: installer (with launchd host-info job and uninstall script), GitHub
+   Actions for the images. Open: a real end-to-end run on a Mac with a Team
+   account, and a user guide with screenshots.

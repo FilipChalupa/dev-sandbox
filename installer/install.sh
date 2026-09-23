@@ -24,9 +24,39 @@ fi
 
 mkdir -p "$DIR/.manager"
 
-# The machine's name on the local network, for the phone preview links.
+# The machine's name and address on the local network, for the phone preview
+# links. A container cannot see them, so a tiny job on the host writes them to
+# .manager/host.json every minute (launchd on a Mac).
 if [ "$(uname)" = "Darwin" ]; then
 	LAN_NAME="$(scutil --get LocalHostName 2>/dev/null || hostname -s).local"
+	mkdir -p "$DIR/.manager/bin" "$HOME/Library/LaunchAgents"
+	cat > "$DIR/.manager/bin/host-info.sh" <<'SH'
+#!/bin/bash
+# Writes the Mac's current LAN address for the sandbox manager.
+dir="$(cd "$(dirname "$0")/.." && pwd)"
+ip=""
+for iface in $(route -n get default 2>/dev/null | awk '/interface:/ {print $2}') en0 en1; do
+	ip="$(ipconfig getifaddr "$iface" 2>/dev/null)" && [ -n "$ip" ] && break
+done
+name="$(scutil --get LocalHostName 2>/dev/null || hostname -s).local"
+printf '{"lanIp":"%s","hostName":"%s","updatedAt":"%s"}\n' "$ip" "$name" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$dir/host.json.tmp" \
+	&& mv "$dir/host.json.tmp" "$dir/host.json"
+SH
+	chmod +x "$DIR/.manager/bin/host-info.sh"
+	PLIST="$HOME/Library/LaunchAgents/com.dev-sandbox.host-info.plist"
+	cat > "$PLIST" <<PL
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+	<key>Label</key><string>com.dev-sandbox.host-info</string>
+	<key>ProgramArguments</key><array><string>$DIR/.manager/bin/host-info.sh</string></array>
+	<key>RunAtLoad</key><true/>
+	<key>StartInterval</key><integer>60</integer>
+</dict></plist>
+PL
+	launchctl unload "$PLIST" >/dev/null 2>&1 || true
+	launchctl load "$PLIST"
+	"$DIR/.manager/bin/host-info.sh"
 else
 	LAN_NAME="$(hostname -s).local"
 fi

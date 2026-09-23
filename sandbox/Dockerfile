@@ -36,6 +36,10 @@ RUN npm install -g corepack@latest \
 	&& corepack enable \
 	&& corepack install -g pnpm@latest yarn@stable
 
+# Playwright MCP server: gives Claude a browser (the system Chromium) to
+# navigate, click and read the page, not just screenshots.
+RUN npm install -g @playwright/mcp@latest
+
 # Everything below runs as the sandbox user.
 USER node
 ENV HOME=/home/node \

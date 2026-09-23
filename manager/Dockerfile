@@ -9,8 +9,9 @@ COPY . .
 RUN pnpm build && pnpm typecheck
 
 FROM node:24-alpine
+ARG BUILD_SHA=dev
 WORKDIR /app
-ENV NODE_ENV=production PORT=8787 SANDBOXES_DATA_DIR=/sandboxes
+ENV NODE_ENV=production PORT=8787 SANDBOXES_DATA_DIR=/sandboxes BUILD_SHA=$BUILD_SHA
 RUN corepack enable
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile --prod

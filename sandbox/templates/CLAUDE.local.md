@@ -43,6 +43,12 @@ when a request is ambiguous.
   `/about` to render another page. Check your visual changes this way before
   reporting them as done.
 
+- You also have a browser through the `playwright` MCP tools
+  (`browser_navigate`, `browser_snapshot`, `browser_click`,
+  `browser_take_screenshot`, …). Use it to click through menus, forms and
+  states that a plain screenshot cannot show. Start at
+  `http://127.0.0.1:<port>` where the dev server listens.
+
 ## Files the person sends you
 
 - Images, fonts and other assets they attach belong in the repository.

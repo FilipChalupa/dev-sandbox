@@ -40,7 +40,8 @@ Code admin settings.
   ([README](sandbox/README.md)).
 - `manager/` – the web UI that creates, starts and stops sandboxes through the
   Docker API.
-- `installer/` – the one-shot installer for the colleague's machine.
+- `installer/` – the one-shot installer for the colleague's machine (and
+  `uninstall.sh`).
 - `docs/` – design notes.
 
 ## Languages

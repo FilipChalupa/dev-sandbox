@@ -91,6 +91,10 @@ jq --arg ws "$SANDBOX_WORKSPACE" '
 	.projects[$ws].hasTrustDialogAccepted = true
 	| .remoteDialogSeen = true
 	| .hasCompletedOnboarding = true
+	| .mcpServers.playwright = {
+		command: "playwright-mcp",
+		args: ["--headless", "--isolated", "--no-sandbox", "--executable-path", "/usr/bin/chromium", "--viewport-size", "1280x800", "--output-dir", "/tmp/playwright-mcp"]
+	}
 ' "$cfg" > "$cfg.tmp" && mv "$cfg.tmp" "$cfg"
 
 # --- rules for Claude, kept out of the repository -------------------------
@@ -99,7 +103,9 @@ envsubst '$SANDBOX_NAME $SANDBOX_BRANCH $SANDBOX_PREVIEW_URL' \
 	< /opt/sandbox/templates/CLAUDE.local.md > CLAUDE.local.md
 mkdir -p .git/info
 grep -qx 'CLAUDE.local.md' .git/info/exclude 2>/dev/null || echo 'CLAUDE.local.md' >> .git/info/exclude
-grep -qx '.env' .git/info/exclude 2>/dev/null || echo '.env' >> .git/info/exclude
+for x in .env .playwright-mcp/; do
+	grep -qx "$x" .git/info/exclude 2>/dev/null || echo "$x" >> .git/info/exclude
+done
 
 # --- services -------------------------------------------------------------
 pids=()

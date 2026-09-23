@@ -8,6 +8,13 @@ import { config } from './config.js'
 import * as dk from './docker.js'
 import * as store from './store.js'
 import * as login from './login.js'
+import * as registry from './registry.js'
+import { hostInfo } from './host.js'
+import fs from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
+
+const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }
+const managerVersion = { version: pkg.version, build: process.env.BUILD_SHA ?? 'dev' }
 
 const action = (cmd: string[]) => async (c: any) => {
 	try {
@@ -165,13 +172,45 @@ app.post('/api/update', async () => {
 	const lines: string[] = []
 	try {
 		await dk.pullImage((l) => lines.push(l))
+		registry.forget(config.image)
 		return json({ ok: true, log: lines.slice(-20) })
 	} catch (e) {
 		return fail(e)
 	}
 })
 
-app.get('/api/info', () => json({ image: config.image, hostDir: config.hostDir, lanHost: config.hostLanName }))
+app.get('/api/info', async () => {
+	const host = await hostInfo()
+	return json({ image: config.image, hostDir: config.hostDir, lanHost: host.lanIp || host.hostName, manager: managerVersion })
+})
+
+app.get('/api/updates', async () => {
+	const self = await dk.selfImage()
+	const [sandbox, manager] = await Promise.all([registry.check(config.image), self ? registry.check(self) : null])
+	return json({ sandbox, manager })
+})
+
+app.get('/api/diagnostics', async () => {
+	const [docker, host, sandboxes] = await Promise.all([
+		dk.diagnostics().catch((e) => ({ error: e instanceof Error ? e.message : String(e) })),
+		hostInfo(),
+		store.readAll(),
+	])
+	let disk: unknown = null
+	try {
+		const st = await fs.statfs(config.dataDir)
+		disk = { freeGb: Math.round((st.bavail * st.bsize) / 1024 ** 3), totalGb: Math.round((st.blocks * st.bsize) / 1024 ** 3) }
+	} catch {}
+	const list = []
+	for (const s of sandboxes) {
+		const c = await dk.containerState(s.name)
+		const st = (await store.readStatus(s.name)) as any
+		let claudeVersion = ''
+		if (c.running) claudeVersion = (await dk.run(s.name, ['claude', '--version'], 15_000).catch(() => ({ output: '' }))).output
+		list.push({ name: s.name, container: c, startedAt: c.running ? new Date(await dk.startedAt(s.name)).toISOString() : '', lastActivity: st?.lastActivity ?? '', loggedIn: st?.claude?.loggedIn ?? null, claudeVersion, image: c.image })
+	}
+	return json({ manager: managerVersion, docker, host, disk, dataDir: config.dataDir, hostDir: config.hostDir, image: config.image, sandboxes: list })
+})
 
 // Browser terminal: ?cmd=shell | login | claude
 app.get(

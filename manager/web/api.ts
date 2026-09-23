@@ -13,13 +13,15 @@ export type Sandbox = {
 	hasToken: boolean
 	container: { exists: boolean; running: boolean; status: string; image: string }
 	status: null | {
-		git: { branch: string; remote: string; dirty: number; ahead: number; lastCommit: string }
+		git: { branch: string; remote: string; dirty: number; ahead: number; lastCommit: string; today: string[]; changed: string[]; shortstat: string }
 		claude: { loggedIn: boolean; email: string; serverRunning: boolean; supervisorRunning: boolean; sessionUrl: string }
 		preview: { url: string; upstreamPort: number; devServerUp: boolean; tunnelUrl: string; user: string; password: string }
 		lastActivity: string
 		updatedAt: string
 	}
 }
+
+export type UpdateCheck = { image: string; local: string; remote: string; updateAvailable: boolean; error?: string }
 
 export type LoginState = { url: string; done: boolean; success: boolean; error: string; invalidCode: boolean; output: string }
 
@@ -53,5 +55,7 @@ export const api = {
 		code: (name: string, code: string) => call<LoginState>('POST', `/api/sandboxes/${name}/login/code`, { code }),
 		cancel: (name: string) => call<unknown>('DELETE', `/api/sandboxes/${name}/login`),
 	},
-	info: () => call<{ image: string; hostDir: string; lanHost: string }>('GET', '/api/info'),
+	info: () => call<{ image: string; hostDir: string; lanHost: string; manager: { version: string; build: string } }>('GET', '/api/info'),
+	updates: () => call<{ sandbox: UpdateCheck; manager: UpdateCheck | null }>('GET', '/api/updates'),
+	diagnostics: () => call<any>('GET', '/api/diagnostics'),
 }

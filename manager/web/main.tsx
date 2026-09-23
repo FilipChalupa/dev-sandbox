@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { createRoot } from 'react-dom/client'
-import { api, type LoginState, type Sandbox } from './api'
+import { api, type LoginState, type Sandbox, type UpdateCheck } from './api'
 import { LangContext, detectLang, languages, saveLang, useT, type Lang } from './i18n'
 import { Terminal } from './Terminal'
 import QRCode from 'qrcode'
@@ -48,6 +48,8 @@ type Modal =
 	| { kind: 'logs'; name: string }
 	| { kind: 'login'; name: string }
 	| { kind: 'delete'; s: Sandbox }
+	| { kind: 'diagnostics' }
+	| { kind: 'changes'; s: Sandbox }
 
 function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 	const t = useT()
@@ -55,8 +57,15 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 	const [modal, setModal] = useState<Modal | null>(null)
 	const [note, setNote] = useState('')
 	const [lanHost, setLanHost] = useState('')
+	const [updates, setUpdates] = useState<{ sandbox: UpdateCheck; manager: UpdateCheck | null } | null>(null)
 	useEffect(() => {
-		api.info().then((i) => setLanHost(i.lanHost)).catch(() => {})
+		const load = () => {
+			api.info().then((i) => setLanHost(i.lanHost)).catch(() => {})
+			api.updates().then(setUpdates).catch(() => {})
+		}
+		load()
+		const id = setInterval(load, 10 * 60_000)
+		return () => clearInterval(id)
 	}, [])
 	const close = () => setModal(null)
 
@@ -74,6 +83,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 		try {
 			await api.update_image()
 			setNote(t('updated'))
+			api.updates().then(setUpdates).catch(() => {})
 		} catch (e) {
 			setNote(`${t('error')}: ${e instanceof Error ? e.message : e}`)
 		}
@@ -107,8 +117,9 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 							<option key={code} value={code}>{l.name}</option>
 						))}
 					</select>
-					<button onClick={updateImage}>{t('update')}</button>
-					<button onClick={updateManager}>{t('updateManager')}</button>
+					<button onClick={() => setModal({ kind: 'diagnostics' })}>{t('diagnostics')}</button>
+					<button onClick={updateImage}>{t('update')}{updates?.sandbox.updateAvailable && <span className="badge">{t('newVersion')}</span>}</button>
+					<button onClick={updateManager}>{t('updateManager')}{updates?.manager?.updateAvailable && <span className="badge">{t('newVersion')}</span>}</button>
 					<button className="primary" onClick={() => setModal({ kind: 'create' })}>{t('newSandbox')}</button>
 				</div>
 			</header>
@@ -141,6 +152,8 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 					onTerminal={() => setModal({ kind: 'terminal', name: modal.name, cmd: 'login' })}
 				/>
 			)}
+			{modal?.kind === 'diagnostics' && <Diagnostics onClose={close} />}
+			{modal?.kind === 'changes' && <Changes s={list?.find((x) => x.name === modal.s.name) ?? modal.s} onClose={close} />}
 			{modal?.kind === 'delete' && (
 				<DeleteDialog s={modal.s} onCancel={close} onConfirm={async (files) => { await run(() => api.remove(modal.s.name, files)); close() }} />
 			)}
@@ -287,6 +300,7 @@ function SandboxCard({ s, lanHost, run, setModal, setError }: {
 						{st.git.dirty === 0 && st.git.ahead === 0 && <span>{t('clean')}</span>}
 						{saved && <span className="ok-text">{saved}</span>}
 						{st.git.lastCommit && <span className="muted">{t('lastCommit')}: {st.git.lastCommit}</span>}
+						<button className="link" onClick={() => setModal({ kind: 'changes', s })}>{t('changesToday')}</button>
 					</div>
 				</>
 			)}
@@ -394,6 +408,113 @@ function Logs({ name, onClose }: { name: string; onClose: () => void }) {
 			<div className="modal-body wide" onClick={(e) => e.stopPropagation()}>
 				<h2>{t('logs')}: {name} <span className="muted small">({t('logLive')})</span></h2>
 				<pre ref={pre} className="logs">{text || '…'}</pre>
+				<div className="actions"><button onClick={onClose}>{t('close')}</button></div>
+			</div>
+		</div>
+	)
+}
+
+function Changes({ s, onClose }: { s: Sandbox; onClose: () => void }) {
+	const t = useT()
+	const g = s.status?.git
+	const empty = !g || (g.today.length === 0 && g.changed.length === 0)
+	return (
+		<div className="modal" onClick={onClose}>
+			<div className="modal-body" onClick={(e) => e.stopPropagation()}>
+				<h2>{t('changesToday')}: {s.name}</h2>
+				{empty ? (
+					<p className="muted">{t('nothingToday')}</p>
+				) : (
+					<>
+						{g.today.length > 0 && (
+							<div>
+								<h3>{t('commitsToday')}</h3>
+								<ul className="plain">{g.today.map((c, i) => <li key={i}><code>{c.slice(0, 7)}</code> {c.slice(8)}</li>)}</ul>
+							</div>
+						)}
+						{g.changed.length > 0 && (
+							<div>
+								<h3>{t('changedFiles')} {g.shortstat && <span className="muted small">({g.shortstat})</span>}</h3>
+								<ul className="plain">{g.changed.map((f, i) => <li key={i}><code>{f}</code></li>)}</ul>
+							</div>
+						)}
+					</>
+				)}
+				<div className="actions"><button onClick={onClose}>{t('close')}</button></div>
+			</div>
+		</div>
+	)
+}
+
+function Diagnostics({ onClose }: { onClose: () => void }) {
+	const t = useT()
+	const [d, setD] = useState<any>(null)
+	const [err, setErr] = useState('')
+	useEffect(() => {
+		api.diagnostics().then(setD).catch((e) => setErr(String(e)))
+	}, [])
+	const fmt = (iso: string) => (iso ? new Date(iso).toLocaleString() : t('unknown'))
+	return (
+		<div className="modal" onClick={onClose}>
+			<div className="modal-body wide" onClick={(e) => e.stopPropagation()}>
+				<h2>{t('diagnostics')}</h2>
+				{err && <p className="error">{err}</p>}
+				{!d && !err && <p>{t('loading')}</p>}
+				{d && (
+					<div className="diag">
+						<section>
+							<h3>{t('diagManager')}</h3>
+							<dl>
+								<dt>{t('version')}</dt><dd>{d.manager.version} ({t('build')} {String(d.manager.build).slice(0, 7)})</dd>
+								<dt>{t('folder')}</dt><dd><code>{d.hostDir}</code></dd>
+							</dl>
+						</section>
+						<section>
+							<h3>{t('diagDocker')}</h3>
+							{d.docker.error ? <p className="error">{d.docker.error}</p> : (
+								<dl>
+									<dt>{t('version')}</dt><dd>{d.docker.docker.version} (API {d.docker.docker.apiVersion})</dd>
+									<dt>OS</dt><dd>{d.docker.docker.os}, {d.docker.docker.arch}, {d.docker.docker.cpus} CPU, {d.docker.docker.memoryGb} GB</dd>
+								</dl>
+							)}
+						</section>
+						<section>
+							<h3>{t('diagHost')}</h3>
+							<dl>
+								<dt>{t('lanIp')}</dt><dd>{d.host.lanIp || t('unknown')} {d.host.hostName && <span className="muted">({d.host.hostName})</span>}</dd>
+								{d.disk && <><dt>{t('diagDisk')}</dt><dd>{d.disk.freeGb} GB {t('free')} {t('of')} {d.disk.totalGb} GB</dd></>}
+							</dl>
+						</section>
+						<section>
+							<h3>{t('diagImages')}</h3>
+							<dl>
+								{Object.entries(d.docker.images ?? {}).map(([name, i]: [string, any]) => (
+									<div key={name}>
+										<dt><code>{name}</code></dt>
+										<dd>{i.missing ? t('unknown') : `${i.sizeMb} MB, ${fmt(i.created)}`} {i.digest && <span className="muted small">{String(i.digest).slice(7, 19)}</span>}</dd>
+									</div>
+								))}
+							</dl>
+						</section>
+						<section>
+							<h3>{t('diagSandboxes')}</h3>
+							<table className="table">
+								<thead><tr><th>{t('name')}</th><th></th><th>{t('uptime')}</th><th>{t('lastActivity')}</th><th>Claude</th></tr></thead>
+								<tbody>
+									{d.sandboxes.map((s: any) => (
+										<tr key={s.name}>
+											<td>{s.name}</td>
+											<td>{s.container.running ? t('running') : t('stopped')}</td>
+											<td>{s.startedAt ? fmt(s.startedAt) : ''}</td>
+											<td>{s.lastActivity ? fmt(s.lastActivity) : ''}</td>
+											<td>{s.claudeVersion || (s.container.running ? '…' : '')} {s.loggedIn === false && <span className="warn-text">({t('needsLogin')})</span>}</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</section>
+					</div>
+				)}
 				<div className="actions"><button onClick={onClose}>{t('close')}</button></div>
 			</div>
 		</div>

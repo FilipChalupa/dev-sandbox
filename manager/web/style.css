@@ -53,3 +53,14 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .modal-body.wide { max-width: 900px; }
 .small { font-size: 12px; font-weight: normal; }
 button.danger-btn { background: var(--danger); border-color: var(--danger); color: #fff; }
+.badge { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--warn); color: #fff; font-size: 11px; vertical-align: middle; }
+.plain { list-style: none; padding: 0; margin: 4px 0 0; display: grid; gap: 2px; font-size: 13px; }
+h3 { font-size: 14px; margin: 0 0 4px; }
+.diag { display: grid; gap: 14px; }
+.diag dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; font-size: 13px; }
+.diag dl div { display: contents; }
+.diag dt { color: var(--muted); }
+.diag dd { margin: 0; }
+.table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.table th, .table td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+.table th { color: var(--muted); font-weight: normal; }
