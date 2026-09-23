@@ -343,6 +343,11 @@ app.get(
 	}),
 )
 
+app.use('/*', async (c, next) => {
+	await next()
+	// The bundle changes with every manager update; never let the browser keep an old one.
+	if (!c.req.path.startsWith('/api/')) c.header('Cache-Control', 'no-cache')
+})
 app.use('/*', serveStatic({ root: path.relative(process.cwd(), publicDir) || '.' }))
 
 const server = serve({ fetch: app.fetch, port: config.port, hostname: '0.0.0.0' }, () =>

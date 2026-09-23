@@ -467,7 +467,15 @@ function repoLinks(repoUrl: string, branch: string, sha: string) {
 	}
 }
 
-const platform = /Mac/i.test(navigator.platform) ? 'mac' : /Win/i.test(navigator.platform) ? 'win' : 'other'
+// Which desktop OS the browser runs on (for wording such as Finder vs Explorer).
+function detectPlatform(): 'mac' | 'win' | 'other' {
+	const hint = ((navigator as any).userAgentData?.platform as string | undefined) ?? ''
+	const ua = navigator.userAgent
+	if (/mac/i.test(hint) || /Macintosh|Mac OS X/i.test(ua)) return 'mac'
+	if (/win/i.test(hint) || /Windows/i.test(ua)) return 'win'
+	return 'other'
+}
+const platform = detectPlatform()
 
 function SandboxCard({ s, usage, host, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
 	s: Sandbox
@@ -606,7 +614,7 @@ function SandboxCard({ s, usage, host, lang, lanHost, lanHosts, onLanHost, run, 
 									const r = host.helper ? await api.openFolder(s.name) : { opened: false, path: folderPath(host.hostDir, s.name) }
 									if (!r.opened) {
 										await navigator.clipboard.writeText(r.path).catch(() => {})
-										toast('info', platform === 'mac' ? t('folderCopiedMac') : t('folderCopied'))
+										toast('info', platform === 'mac' ? t('folderCopiedMac') : platform === 'win' ? t('folderCopiedWin') : t('folderCopied'))
 									}
 								} catch (e) {
 									toast('error', humanizeError(e instanceof Error ? e.message : String(e), t))
