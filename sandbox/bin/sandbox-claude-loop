@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Runs inside tmux. Keeps the Remote Control server alive: waits for a login,
+# restarts the server when it exits (crash, or the ~10 minute network-outage
+# give-up), and stays interactive so a person can attach for the login.
+source sandbox-lib
+cd "$SANDBOX_WORKSPACE"
+
+while true; do
+	if ! claude_logged_in; then
+		echo
+		echo "Claude is not logged in. Log in with:  claude auth login"
+		echo "(In the manager UI: open the terminal of this sandbox and run it there.)"
+		sleep 15
+		continue
+	fi
+	sandbox-git-identity >/dev/null 2>&1 || true
+	echo "Starting Claude Remote Control server for '$SANDBOX_NAME'…"
+	claude remote-control \
+		--name "$SANDBOX_NAME" \
+		--permission-mode bypassPermissions \
+		--spawn same-dir
+	echo "Remote Control server exited, restarting in 5 s…"
+	sleep 5
+done

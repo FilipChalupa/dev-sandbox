@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Writes status.json every few seconds for the manager.
+source sandbox-lib
+while true; do
+	sandbox-status > "$(state_file status.json.tmp)" 2>/dev/null \
+		&& mv "$(state_file status.json.tmp)" "$(state_file status.json)"
+	sleep 10
+done

@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Usage: sandbox-preview <port>
+# Points the local preview (and the shared tunnel, if any) at the dev server
+# listening on <port> inside the sandbox.
+set -euo pipefail
+source sandbox-lib
+port="${1:?usage: sandbox-preview <port>}"
+write_state upstream-port "$port"
+sandbox-caddy-reload >/dev/null
+echo "Preview: $SANDBOX_PREVIEW_URL  (dev server on port $port)"
+if tunnel_running; then
+	echo "Shared: $(tunnel_url)  (user: $SANDBOX_PREVIEW_USER, password: $(preview_password))"
+fi

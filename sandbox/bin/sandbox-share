@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Usage: sandbox-share [<port>]
+# Publishes the preview on a public Cloudflare quick tunnel URL protected by
+# basic auth. Prints the URL and the credentials. Idempotent.
+set -euo pipefail
+source sandbox-lib
+
+if [ -n "${1:-}" ]; then
+	write_state upstream-port "$1"
+	sandbox-caddy-reload >/dev/null
+fi
+
+if ! tunnel_running; then
+	rm -f "$(state_file tunnel-url)"
+	: > "$(state_file cloudflared.log)"
+	nohup cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8081 \
+		>> "$(state_file cloudflared.log)" 2>&1 &
+	write_state cloudflared.pid "$!"
+	for _ in $(seq 1 60); do
+		url="$(grep -m1 -o 'https://[a-z0-9-]*\.trycloudflare\.com' "$(state_file cloudflared.log)" || true)"
+		[ -n "$url" ] && break
+		sleep 1
+	done
+	if [ -z "${url:-}" ]; then
+		echo "Could not start the tunnel, see $(state_file cloudflared.log)" >&2
+		exit 1
+	fi
+	write_state tunnel-url "$url"
+fi
+
+echo "Shared preview: $(tunnel_url)"
+echo "Login: user '$SANDBOX_PREVIEW_USER', password '$(preview_password)'"
+echo "(dev server on port $(upstream_port); the URL changes each time sharing is restarted)"

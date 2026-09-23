@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Stops the public tunnel. The local preview keeps working.
+set -euo pipefail
+source sandbox-lib
+pid="$(read_state cloudflared.pid)"
+[ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+rm -f "$(state_file cloudflared.pid)" "$(state_file tunnel-url)"
+echo "Sharing stopped."

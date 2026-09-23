@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Renders the Caddyfile for the current upstream port and reloads Caddy.
+set -euo pipefail
+source sandbox-lib
+
+port="$(upstream_port)"
+hash="$(caddy hash-password --plaintext "$(preview_password)")"
+header_up='header_up Host {upstream_hostport}'
+[ "${SANDBOX_PRESERVE_HOST:-0}" = "1" ] && header_up=''
+
+export PORT="$port" USER="$SANDBOX_PREVIEW_USER" HASH="$hash" HEADER_UP="$header_up"
+envsubst '$PORT $USER $HASH $HEADER_UP' \
+	< /opt/sandbox/templates/Caddyfile > "$(state_file Caddyfile)"
+
+if curl -fs http://localhost:2019/config/ >/dev/null 2>&1; then
+	caddy reload --config "$(state_file Caddyfile)" 2>/dev/null
+fi
+echo "preview proxies to 127.0.0.1:$port"

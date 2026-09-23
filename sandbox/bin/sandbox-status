@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Prints the sandbox status as JSON (what the manager UI shows).
+set -uo pipefail
+source sandbox-lib
+cd "$SANDBOX_WORKSPACE" 2>/dev/null || true
+
+auth="$(claude auth status 2>/dev/null || true)"   # exits 1 when logged out, still prints JSON
+printf '%s' "$auth" | jq -e . >/dev/null 2>&1 || auth='{}'
+logged_in="$(printf '%s' "$auth" | jq -r 'if .loggedIn == true then "true" else "false" end')"
+email="$(printf '%s' "$auth" | jq -r '.email // empty')"
+if pgrep -f 'claude remote-control' >/dev/null 2>&1; then running=true; else running=false; fi
+if [ -d .git ]; then
+	dirty="$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+	branch="$(git branch --show-current 2>/dev/null)"
+	ahead="$(git rev-list '@{u}..HEAD' 2>/dev/null | wc -l | tr -d ' ')"
+	last="$(git log -1 --format='%h %s' 2>/dev/null)"
+	remote="$(git remote get-url origin 2>/dev/null)"
+else
+	dirty=0; branch=""; ahead=0; last=""; remote=""
+fi
+if tunnel_running; then tunnel="$(tunnel_url)"; else tunnel=""; fi
+
+jq -n \
+	--arg name "$SANDBOX_NAME" \
+	--arg branch "${branch:-$SANDBOX_BRANCH}" \
+	--arg remote "$remote" \
+	--arg session "$(session_url)" \
+	--arg preview "$SANDBOX_PREVIEW_URL" \
+	--arg tunnel "$tunnel" \
+	--arg port "$(upstream_port)" \
+	--arg user "$SANDBOX_PREVIEW_USER" \
+	--arg pw "$(preview_password)" \
+	--argjson loggedIn "$logged_in" \
+	--arg email "$email" \
+	--argjson running "$running" \
+	--argjson dirty "${dirty:-0}" \
+	--argjson ahead "${ahead:-0}" \
+	--arg last "$last" \
+	'{
+		name: $name,
+		git: { branch: $branch, remote: $remote, dirty: $dirty, ahead: $ahead, lastCommit: $last },
+		claude: { loggedIn: $loggedIn, email: $email, serverRunning: $running, sessionUrl: $session },
+		preview: { url: $preview, upstreamPort: ($port | tonumber), tunnelUrl: $tunnel, user: $user, password: $pw },
+		updatedAt: (now | todate)
+	}'

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Safety net: every SANDBOX_AUTOSAVE_MINUTES commits a dirty tree as a wip
+# commit and pushes whatever is not pushed yet. Never touches a repository in
+# the middle of a merge or rebase.
+source sandbox-lib
+cd "$SANDBOX_WORKSPACE"
+interval="${SANDBOX_AUTOSAVE_MINUTES:-10}"
+
+while true; do
+	sleep "$((interval * 60))"
+	[ -d .git ] || continue
+	if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ] || [ -f .git/MERGE_HEAD ]; then
+		log "merge/rebase in progress, skipping"
+		continue
+	fi
+	git config user.email >/dev/null 2>&1 || sandbox-git-identity >/dev/null 2>&1 || continue
+	if [ -n "$(git status --porcelain)" ]; then
+		git add -A
+		git commit -q -m "wip: autosave $(date '+%Y-%m-%d %H:%M')" && log "committed autosave"
+	fi
+	if git remote get-url origin >/dev/null 2>&1 && git rev-parse --verify -q HEAD >/dev/null; then
+		if ! git rev-parse --verify -q '@{u}' >/dev/null \
+			|| [ -n "$(git rev-list '@{u}..HEAD' 2>/dev/null)" ]; then
+			git push -q -u origin "$SANDBOX_BRANCH" && log "pushed $SANDBOX_BRANCH" || log "push failed"
+		fi
+	fi
+done

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Runs as root: makes the mounted directories writable for the sandbox user,
+# then hands over to sandbox-entrypoint as that user.
+set -euo pipefail
+: "${SANDBOX_NAME:?SANDBOX_NAME is required}"
+state="${SANDBOX_STATE_DIR:-/state}"
+workspace="/workspace/${SANDBOX_NAME}"
+claude="${CLAUDE_CONFIG_DIR:-/home/node/.claude}"
+mkdir -p "$state" "$workspace" "$claude"
+chown -R node:node "$state" "$claude"
+# The workspace can be large: only fix it when the top directory is not ours.
+if [ "$(stat -c %u "$workspace")" != "$(id -u node)" ]; then
+	chown -R node:node "$workspace" 2>/dev/null || true
+fi
+exec setpriv --reuid=node --regid=node --init-groups sandbox-entrypoint "$@"

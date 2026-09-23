@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Shared helpers, sourced by the other sandbox-* scripts.
+
+: "${SANDBOX_NAME:?SANDBOX_NAME is required}"
+export SANDBOX_STATE_DIR="${SANDBOX_STATE_DIR:-/state}"
+export SANDBOX_WORKSPACE="/workspace/${SANDBOX_NAME}"
+export SANDBOX_BRANCH="${SANDBOX_BRANCH:-sandbox/${SANDBOX_NAME}}"
+export SANDBOX_PREVIEW_USER="${SANDBOX_PREVIEW_USER:-preview}"
+export SANDBOX_PREVIEW_URL="${SANDBOX_PREVIEW_URL:-http://localhost:8080}"
+export CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+
+log() { printf '%s [%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${0##*/}" "$*" >&2; }
+
+state_file() { printf '%s/%s' "$SANDBOX_STATE_DIR" "$1"; }
+
+read_state() { [ -f "$(state_file "$1")" ] && cat "$(state_file "$1")" || true; }
+
+write_state() { printf '%s' "$2" > "$(state_file "$1")"; }
+
+strip_ansi() { sed -E 's/\x1b\[[0-9;?]*[A-Za-z]//g; s/\x1b\][^\a]*\a//g; s/\r//g'; }
+
+preview_password() {
+	local f; f="$(state_file preview-password)"
+	if [ -n "${SANDBOX_PREVIEW_PASSWORD:-}" ]; then
+		printf '%s' "$SANDBOX_PREVIEW_PASSWORD"
+	elif [ -s "$f" ]; then
+		cat "$f"
+	else
+		local pw; pw="$(LC_ALL=C tr -dc 'a-z0-9' < <(head -c 400 /dev/urandom))"
+		printf '%s' "${pw:0:12}"
+	fi
+}
+
+upstream_port() { local p; p="$(read_state upstream-port)"; printf '%s' "${p:-3000}"; }
+
+tunnel_url() { read_state tunnel-url; }
+
+tunnel_running() {
+	local pid; pid="$(read_state cloudflared.pid)"
+	[ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+
+claude_logged_in() {
+	claude auth status 2>/dev/null | jq -e '.loggedIn == true' >/dev/null 2>&1
+}
+
+# Session URL of the Remote Control server, parsed from its log.
+session_url() {
+	local f; f="$(state_file claude.log)"
+	[ -f "$f" ] || return 0
+	strip_ansi < "$f" | grep -o 'https://claude\.ai/[A-Za-z0-9/_.?=&-]*' | tail -n 1
+}

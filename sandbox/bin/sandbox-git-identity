@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Sets git user.name and user.email from the logged-in Claude account,
+# unless SANDBOX_GIT_NAME / SANDBOX_GIT_EMAIL are given.
+set -euo pipefail
+source sandbox-lib
+cd "$SANDBOX_WORKSPACE"
+
+name="${SANDBOX_GIT_NAME:-}"
+email="${SANDBOX_GIT_EMAIL:-}"
+if [ -z "$name" ] || [ -z "$email" ]; then
+	acct="$CLAUDE_CONFIG_DIR/.claude.json"
+	if [ -f "$acct" ]; then
+		[ -n "$name" ] || name="$(jq -r '.oauthAccount.displayName // .oauthAccount.fullName // empty' "$acct" 2>/dev/null || true)"
+		[ -n "$email" ] || email="$(jq -r '.oauthAccount.emailAddress // empty' "$acct" 2>/dev/null || true)"
+	fi
+fi
+[ -n "$email" ] || exit 1
+[ -n "$name" ] || name="${email%%@*}"
+git config user.name "$name"
+git config user.email "$email"
+echo "git identity: $name <$email>"

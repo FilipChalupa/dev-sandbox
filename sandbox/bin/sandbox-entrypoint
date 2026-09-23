@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# Container entrypoint: prepare the repository, git credentials and identity,
+# the rules file for Claude, then start Caddy, the Claude Remote Control
+# server (in tmux), the autosave loop and the status writer.
+set -euo pipefail
+source sandbox-lib
+
+mkdir -p "$SANDBOX_STATE_DIR" "$SANDBOX_WORKSPACE" "$CLAUDE_CONFIG_DIR"
+chmod 700 "$SANDBOX_STATE_DIR" 2>/dev/null || true
+
+# --- preview password ---------------------------------------------------
+pw="$(preview_password)"
+write_state preview-password "$pw"
+chmod 600 "$(state_file preview-password)"
+
+# --- git: URL, credentials ------------------------------------------------
+repo_url="${SANDBOX_REPO_URL:-}"
+token="${SANDBOX_GIT_TOKEN:-$(read_state git-token)}"
+# Token auth needs HTTPS. Convert ssh style URLs.
+if [[ "$repo_url" =~ ^git@([^:]+):(.+)$ ]]; then
+	repo_url="https://${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+elif [[ "$repo_url" =~ ^ssh://git@([^/]+)/(.+)$ ]]; then
+	repo_url="https://${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+fi
+git config --global safe.directory '*'
+git config --global init.defaultBranch main
+git config --global push.autoSetupRemote true
+git config --global pull.rebase false
+git config --global core.hooksPath /dev/null   # repository hooks are not ours to run
+if [ -n "$repo_url" ] && [ -n "$token" ]; then
+	host="$(printf '%s' "$repo_url" | sed -E 's#^https?://([^/]+).*#\1#')"
+	user="${SANDBOX_GIT_USERNAME:-}"
+	if [ -z "$user" ]; then
+		case "$host" in
+			bitbucket.org) user=x-token-auth ;;
+			github.com) user=x-access-token ;;
+			gitlab.com) user=oauth2 ;;
+			*) user=token ;;
+		esac
+	fi
+	printf 'https://%s:%s@%s\n' "$user" "$token" "$host" > "$(state_file git-credentials)"
+	chmod 600 "$(state_file git-credentials)"
+	git config --global credential.helper "store --file=$(state_file git-credentials)"
+fi
+
+# --- git: repository and branch -------------------------------------------
+cd "$SANDBOX_WORKSPACE"
+if [ ! -d .git ]; then
+	if [ -n "$repo_url" ]; then
+		log "cloning $repo_url"
+		git init -q .
+		git remote add origin "$repo_url"
+		git fetch -q origin
+		git remote set-head origin -a >/dev/null 2>&1 || true
+		default="$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
+		[ -n "$default" ] && git checkout -q "$default" 2>/dev/null || true
+	else
+		log "no repository URL, starting an empty project"
+		git init -q -b "$SANDBOX_BRANCH" .
+	fi
+fi
+if [ -n "$repo_url" ]; then
+	if git remote get-url origin >/dev/null 2>&1; then
+		git remote set-url origin "$repo_url"
+	else
+		git remote add origin "$repo_url"
+	fi
+fi
+if git show-ref --verify --quiet "refs/heads/$SANDBOX_BRANCH"; then
+	git checkout -q "$SANDBOX_BRANCH"
+elif git remote get-url origin >/dev/null 2>&1 \
+	&& git ls-remote --exit-code --heads origin "$SANDBOX_BRANCH" >/dev/null 2>&1; then
+	git fetch -q origin "$SANDBOX_BRANCH"
+	git checkout -q -b "$SANDBOX_BRANCH" --track "origin/$SANDBOX_BRANCH"
+elif git rev-parse --verify -q HEAD >/dev/null; then
+	git checkout -q -b "$SANDBOX_BRANCH"
+else
+	git symbolic-ref HEAD "refs/heads/$SANDBOX_BRANCH"
+fi
+log "on branch $(git branch --show-current)"
+
+sandbox-git-identity || true
+
+# Claude asks once per directory whether to trust it, and once whether to
+# enable Remote Control. Nobody sits at this terminal, so answer up front.
+cfg="$CLAUDE_CONFIG_DIR/.claude.json"
+[ -s "$cfg" ] && jq -e . "$cfg" >/dev/null 2>&1 || echo '{}' > "$cfg"
+jq --arg ws "$SANDBOX_WORKSPACE" '
+	.projects[$ws].hasTrustDialogAccepted = true
+	| .remoteDialogSeen = true
+	| .hasCompletedOnboarding = true
+' "$cfg" > "$cfg.tmp" && mv "$cfg.tmp" "$cfg"
+
+# --- rules for Claude, kept out of the repository -------------------------
+export SANDBOX_NAME SANDBOX_BRANCH SANDBOX_PREVIEW_URL
+envsubst '$SANDBOX_NAME $SANDBOX_BRANCH $SANDBOX_PREVIEW_URL' \
+	< /opt/sandbox/templates/CLAUDE.local.md > CLAUDE.local.md
+mkdir -p .git/info
+grep -qx 'CLAUDE.local.md' .git/info/exclude 2>/dev/null || echo 'CLAUDE.local.md' >> .git/info/exclude
+grep -qx '.env' .git/info/exclude 2>/dev/null || echo '.env' >> .git/info/exclude
+
+# --- services -------------------------------------------------------------
+pids=()
+trap 'log "shutting down"; sandbox-unshare >/dev/null 2>&1 || true; tmux kill-server 2>/dev/null || true; kill "${pids[@]}" 2>/dev/null || true; exit 0' TERM INT
+
+sandbox-caddy-reload >/dev/null
+caddy run --config "$(state_file Caddyfile)" >> "$(state_file caddy.log)" 2>&1 &
+pids+=($!)
+
+if [ "${SANDBOX_AUTOSAVE_MINUTES:-10}" != "0" ]; then
+	sandbox-autosave >> "$(state_file autosave.log)" 2>&1 &
+	pids+=($!)
+fi
+
+sandbox-status-loop &
+pids+=($!)
+
+# Claude needs a terminal: run the supervisor loop inside tmux and copy its
+# output to a log the status writer can parse.
+tmux new-session -d -s claude -x 200 -y 50 -c "$SANDBOX_WORKSPACE" sandbox-claude-loop
+tmux pipe-pane -t claude -o "cat >> $(state_file claude.log)"
+
+log "sandbox '$SANDBOX_NAME' is up; preview password for user '$SANDBOX_PREVIEW_USER' is in $(state_file preview-password)"
+wait
