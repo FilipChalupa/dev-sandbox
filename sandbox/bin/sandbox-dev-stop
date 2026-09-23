@@ -3,6 +3,8 @@
 source sandbox-lib
 if tmux has-session -t dev 2>/dev/null; then
 	tmux kill-session -t dev
+	sleep 1
+	sandbox-status-write
 	echo "dev server stopped"
 else
 	echo "no dev server session"

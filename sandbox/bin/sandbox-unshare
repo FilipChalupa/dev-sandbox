@@ -5,4 +5,5 @@ source sandbox-lib
 pid="$(read_state cloudflared.pid)"
 [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
 rm -f "$(state_file cloudflared.pid)" "$(state_file tunnel-url)"
+sandbox-status-write
 echo "Sharing stopped."

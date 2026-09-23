@@ -165,6 +165,10 @@ export function Rel({ iso, lang }: { iso: string; lang: string }) {
 
 export const isRecent = (iso: string, ms: number) => Boolean(iso) && Date.now() - Date.parse(iso) < ms
 
+export function Spinner() {
+	return <span className="spinner" aria-hidden="true" />
+}
+
 export function Skeleton() {
 	return (
 		<ul className="cards" aria-hidden="true">

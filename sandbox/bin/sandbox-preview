@@ -7,6 +7,7 @@ source sandbox-lib
 port="${1:?usage: sandbox-preview <port>}"
 write_state upstream-port "$port"
 sandbox-caddy-reload >/dev/null
+sandbox-status-write
 echo "Preview: $SANDBOX_PREVIEW_URL  (dev server on port $port)"
 if tunnel_running; then
 	echo "Shared: $(tunnel_url)  (user: $SANDBOX_PREVIEW_USER, password: $(preview_password))"

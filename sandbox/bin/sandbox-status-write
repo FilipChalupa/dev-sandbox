@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Writes status.json right now (the loop does it every few seconds; scripts
+# call this after a change so the UI does not lag behind).
+source sandbox-lib
+sandbox-status > "$(state_file status.json.tmp)" 2>/dev/null && mv "$(state_file status.json.tmp)" "$(state_file status.json)"

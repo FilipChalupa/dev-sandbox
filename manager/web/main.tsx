@@ -5,7 +5,7 @@ import { Loading, SharedLoadingIndicatorContextProvider, SharedProgressLoadingIn
 import { api, type LoginState, type Sandbox, type UpdateCheck, type UpdateProgress } from './api'
 import { LangContext, detectLang, languages, saveLang, useT, type Lang } from './i18n'
 import { Terminal } from './Terminal'
-import { Icon, Menu, Modal, Pill, Rel, Skeleton, ToastProvider, humanizeError, isRecent, useToast } from './ui'
+import { Icon, Menu, Modal, Pill, Rel, Skeleton, Spinner, ToastProvider, humanizeError, isRecent, useToast } from './ui'
 import './style.css'
 
 // ---------------------------------------------------------------- data
@@ -372,7 +372,20 @@ function SandboxCard({ s, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
 	const stage = stageOf(s)
 	const running = s.container.running
 	const [busy, setBusy] = useState<'share' | 'save' | 'dev' | ''>('')
-	useMirrorLoading(busy !== '')
+	// After an action returns, keep the button busy until the sandbox status
+	// shows the result (or 45 s pass), polling faster meanwhile.
+	const [pending, setPending] = useState<{ check: (s: Sandbox) => boolean; until: number } | null>(null)
+	useEffect(() => {
+		if (!pending) return
+		if (pending.check(s) || Date.now() > pending.until) {
+			setPending(null)
+			return
+		}
+		const id = setTimeout(() => run(async () => {}), 1500)
+		return () => clearTimeout(id)
+	}, [pending, s])
+	const waiting = busy !== '' || pending !== null
+	useMirrorLoading(waiting)
 	const [expanded, setExpanded] = useState<boolean | null>(null)
 	const open = expanded ?? running
 	const working = Boolean(st && isRecent(st.lastActivity, 60_000))
@@ -384,6 +397,11 @@ function SandboxCard({ s, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
 			if (what === 'save') toast('ok', `${t('sent')} (${r.output.split('\n').pop()})`)
 			if (what === 'restart-claude' || what === 'dev-stop') toast('ok', r.output)
 			if (what === 'dev-start') toast('ok', `${t('devStarted')} ${r.output.split('\n').pop() ?? ''}`)
+			const until = Date.now() + 45_000
+			if (what === 'share') setPending({ check: (x) => Boolean(x.status?.preview.tunnelUrl), until })
+			if (what === 'unshare') setPending({ check: (x) => !x.status?.preview.tunnelUrl, until })
+			if (what === 'dev-start') setPending({ check: (x) => Boolean(x.status?.preview.devServerUp), until })
+			if (what === 'dev-stop') setPending({ check: (x) => !x.status?.preview.devServerUp, until })
 		} catch (e) {
 			toast('error', humanizeError(e instanceof Error ? e.message : String(e), t))
 		} finally {
@@ -429,8 +447,8 @@ function SandboxCard({ s, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
 				{running && st && stage.step === 3 && (
 					st.preview.devServerUp ? (
 						<Pill tone="on">{t('devServerUp')}</Pill>
-					) : busy === 'dev' ? (
-						<Pill tone="work" pulse>{t('devStarting')}</Pill>
+					) : busy === 'dev' || pending ? (
+						<Pill tone="work"><Spinner /> {t('devStarting')}</Pill>
 					) : (
 						<Pill tone="off">{t('devServerDown')} · <button className="pill-link" onClick={() => action('dev-start')}>{t('devStart')}</button></Pill>
 					)
@@ -462,11 +480,11 @@ function SandboxCard({ s, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
 							<div className="links">
 								<a className="button" href={st.preview.url} target="_blank" rel="noreferrer"><Icon name="globe" /> {t('openPreview')}</a>
 								{st.preview.tunnelUrl ? (
-									<button onClick={() => action('unshare')} disabled={busy === 'share'}><Icon name="x" /> {t('unshare')}</button>
+									<button onClick={() => action('unshare')} disabled={waiting}>{busy === 'share' || pending ? <Spinner /> : <Icon name="x" />} {t('unshare')}</button>
 								) : (
-									<button onClick={() => action('share')} disabled={busy === 'share'}><Icon name="share" /> {busy === 'share' ? t('sharing') : t('share')}</button>
+									<button onClick={() => action('share')} disabled={waiting} className={busy === 'share' || pending ? 'busy' : ''}>{busy === 'share' || pending ? <Spinner /> : <Icon name="share" />} {busy === 'share' || pending ? t('sharing') : t('share')}</button>
 								)}
-								<button onClick={() => action('save')} disabled={busy === 'save'}><Icon name="send" /> {busy === 'save' ? t('sending') : t('sendToDev')}</button>
+								<button onClick={() => action('save')} disabled={waiting} className={busy === 'save' ? 'busy' : ''}>{busy === 'save' ? <Spinner /> : <Icon name="send" />} {busy === 'save' ? t('sending') : t('sendToDev')}</button>
 							</div>
 							{st.preview.tunnelUrl && (
 								<Access title={t('shared')} icon="globe" url={st.preview.tunnelUrl} user={st.preview.user} password={st.preview.password} onQr={(text) => setModal({ kind: 'qr', text, title: t('shared') })} />

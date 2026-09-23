@@ -11,6 +11,7 @@ if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ] || [ -f .git/MERGE_HEAD 
 	echo "merge or rebase in progress, not saving"; exit 2
 fi
 git config user.email >/dev/null 2>&1 || sandbox-git-identity >/dev/null 2>&1 || { echo "no git identity yet (Claude not logged in?)"; exit 3; }
+trap 'sandbox-status-write' EXIT
 msg="${1:-wip: autosave $(date '+%Y-%m-%d %H:%M')}"
 if [ -n "$(git --no-optional-locks status --porcelain)" ]; then
 	git add -A

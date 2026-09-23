@@ -46,6 +46,7 @@ if [ -n "$cmd" ]; then
 	if port="$(wait_for_port 90)"; then
 		write_state upstream-port "$port"
 		sandbox-caddy-reload >/dev/null 2>&1 || true
+		sandbox-status-write
 		echo "dev server listens on port $port, preview: $SANDBOX_PREVIEW_URL"
 		exit 0
 	fi
@@ -60,6 +61,7 @@ claude_logged_in || { echo "Claude is not logged in"; exit 1; }
 timeout 240 claude -p --permission-mode bypassPermissions \
 	"Start this project's development server so that it keeps running after you finish (use a tmux session named dev: tmux new-session -d -s dev '<command>'). Read the README and config files to find out how. Do not change project files. When something listens on a port, run: sandbox-preview <port>. Reply with one short line saying what you started and on which port, or why it is not possible." 2>&1 | tail -n 5
 if port="$(wait_for_port 5)"; then
+	sandbox-status-write
 	echo "dev server listens on port $port, preview: $SANDBOX_PREVIEW_URL"
 	exit 0
 fi

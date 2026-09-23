@@ -28,6 +28,7 @@ if ! tunnel_running; then
 	write_state tunnel-url "$url"
 fi
 
+sandbox-status-write
 echo "Shared preview: $(tunnel_url)"
 echo "Login: user '$SANDBOX_PREVIEW_USER', password '$(preview_password)'"
 echo "(dev server on port $(upstream_port); the URL changes each time sharing is restarted)"

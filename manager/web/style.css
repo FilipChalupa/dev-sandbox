@@ -168,3 +168,6 @@ pre.logs { font-size: 12px; white-space: pre-wrap; max-height: 60vh; overflow: a
 .toast span { flex: 1; }
 .toast.ok { border-left: 4px solid var(--on); } .toast.error { border-left: 4px solid var(--danger); } .toast.info { border-left: 4px solid var(--primary); }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; display: inline-block; animation: spin .8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+button.busy { border-color: var(--primary); color: var(--primary); }
