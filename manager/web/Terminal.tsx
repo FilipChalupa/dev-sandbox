@@ -2,12 +2,22 @@ import { useEffect, useRef } from 'react'
 import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
+import { Icon, useEscape } from './ui'
+import { useT } from './i18n'
 
 export function Terminal({ name, cmd, onClose }: { name: string; cmd: 'shell' | 'login' | 'claude'; onClose: () => void }) {
+	const t = useT()
 	const ref = useRef<HTMLDivElement>(null)
+	useEscape(onClose)
 	useEffect(() => {
 		const el = ref.current!
-		const term = new XTerm({ cursorBlink: true, fontSize: 14, convertEol: false })
+		const term = new XTerm({
+			cursorBlink: true,
+			fontSize: 13,
+			fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
+			theme: { background: '#0b0d12' },
+			convertEol: false,
+		})
 		const fit = new FitAddon()
 		term.loadAddon(fit)
 		term.open(el)
@@ -33,7 +43,13 @@ export function Terminal({ name, cmd, onClose }: { name: string; cmd: 'shell' | 
 	}, [name, cmd])
 	return (
 		<div className="modal" onClick={onClose}>
-			<div className="modal-body terminal" onClick={(e) => e.stopPropagation()}>
+			<div className="modal-body terminal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+				<div className="term-bar">
+					<Icon name="terminal" />
+					<span>{t('terminal')}: <strong>{name}</strong>{cmd !== 'shell' && <span className="muted"> · {cmd}</span>}</span>
+					<span className="grow" />
+					<button className="icon-btn" onClick={onClose} aria-label={t('close')}><Icon name="x" /></button>
+				</div>
 				<div ref={ref} className="xterm-host" />
 			</div>
 		</div>

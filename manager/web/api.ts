@@ -22,6 +22,8 @@ export type Sandbox = {
 	}
 }
 
+export type UpdateProgress = { running: boolean; done: boolean; error: string; percent: number; lines: string[] }
+
 export type UpdateCheck = { image: string; local: string; remote: string; updateAvailable: boolean; error?: string }
 
 export type LoginState = { url: string; done: boolean; success: boolean; error: string; invalidCode: boolean; output: string }
@@ -46,7 +48,8 @@ export const api = {
 	stop: (name: string) => call<Sandbox>('POST', `/api/sandboxes/${name}/stop`),
 	remove: (name: string, files: boolean) => call<unknown>('DELETE', `/api/sandboxes/${name}?files=${files ? 1 : 0}`),
 	logs: (name: string) => fetch(`/api/sandboxes/${name}/logs`).then((r) => r.text()),
-	update_image: () => call<{ log: string[] }>('POST', '/api/update'),
+	update_image: () => call<UpdateProgress>('POST', '/api/update'),
+	update_progress: () => call<UpdateProgress>('GET', '/api/update'),
 	self_update: () => call<{ ok: boolean }>('POST', '/api/self-update'),
 	action: (name: string, what: 'share' | 'unshare' | 'save' | 'restart-claude') =>
 		call<{ ok: boolean; output: string }>('POST', `/api/sandboxes/${name}/${what}`),

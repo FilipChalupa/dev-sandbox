@@ -168,16 +168,28 @@ app.get(
 	}),
 )
 
+// Image update runs as a job; the UI polls its progress.
+const updateJob = { running: false, done: false, error: '', lines: [] as string[], layers: {} as Record<string, { current: number; total: number }> }
 app.post('/api/update', async () => {
-	const lines: string[] = []
-	try {
-		await dk.pullImage((l) => lines.push(l))
-		registry.forget(config.image)
-		return json({ ok: true, log: lines.slice(-20) })
-	} catch (e) {
-		return fail(e)
+	if (!updateJob.running) {
+		Object.assign(updateJob, { running: true, done: false, error: '', lines: [], layers: {} })
+		dk.pullImage((l, ev) => {
+			if (l && updateJob.lines[updateJob.lines.length - 1] !== l) updateJob.lines.push(l)
+			if (ev?.id && ev.progressDetail?.total) updateJob.layers[ev.id] = { current: ev.progressDetail.current ?? 0, total: ev.progressDetail.total }
+			if (ev?.id && /Pull complete|Already exists/.test(ev.status ?? '')) updateJob.layers[ev.id] = { current: 1, total: 1 }
+		})
+			.then(() => registry.forget(config.image))
+			.catch((e) => (updateJob.error = e instanceof Error ? e.message : String(e)))
+			.finally(() => Object.assign(updateJob, { running: false, done: true }))
 	}
+	return json(progress())
 })
+function progress() {
+	const layers = Object.values(updateJob.layers)
+	const percent = layers.length ? Math.round((layers.reduce((a, l) => a + Math.min(l.current, l.total) / l.total, 0) / layers.length) * 100) : 0
+	return { running: updateJob.running, done: updateJob.done, error: updateJob.error, percent, lines: updateJob.lines.slice(-5) }
+}
+app.get('/api/update', () => json(progress()))
 
 app.get('/api/info', async () => {
 	const hosts = await lanHosts()

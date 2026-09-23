@@ -117,14 +117,15 @@ async function ensureImage() {
 // tag) cannot be pulled; say so instead of failing with a confusing 404.
 export const isLocalImage = () => !config.image.includes('/')
 
-export async function pullImage(onProgress: (line: string) => void) {
+type PullEvent = { status?: string; id?: string; progress?: string; progressDetail?: { current?: number; total?: number } }
+export async function pullImage(onProgress: (line: string, ev?: PullEvent) => void) {
 	if (isLocalImage()) throw new Error(`"${config.image}" is a local image, there is nothing to download. Rebuild it instead.`)
 	const stream = await docker.pull(config.image)
 	await new Promise<void>((resolve, reject) => {
 		docker.modem.followProgress(
 			stream,
 			(err) => (err ? reject(err) : resolve()),
-			(ev) => onProgress(`${ev.status ?? ''} ${ev.progress ?? ''}`.trim()),
+			(ev: PullEvent) => onProgress(`${ev.status ?? ''} ${ev.progress ?? ''}`.trim(), ev),
 		)
 	})
 }
