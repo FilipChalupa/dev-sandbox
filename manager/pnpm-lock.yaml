@@ -35,6 +35,9 @@ importers:
       react-dom:
         specifier: ^19.1.0
         version: 19.3.0(react@19.3.0)
+      shared-loading-indicator:
+        specifier: ^2.0.1
+        version: 2.0.1(react@19.3.0)
       tsx:
         specifier: ^4.20.0
         version: 4.23.15
@@ -703,6 +706,11 @@ packages:
   set-blocking@2.0.0:
     resolution: {integrity: sha512-KiKBS8AnWGEyLzofFfmvKwpdPzqiy16LvQfK3yv/fVH7Bj13/wl3JSR1J+rfgRE9q7xUJK4qvgS8raSOeLUehw==}
 
+  shared-loading-indicator@2.0.1:
+    resolution: {integrity: sha512-OlahqZQjZR5f9ibRlj+vmQBDXGK17uQoEoUAKilSHhulWo2haQ+6021CVSOxiDezxJdH8zImc4Ecl7uENGLtOw==}
+    peerDependencies:
+      react: 17 || 18 || 19
+
   shell-quote@1.9.0:
     resolution: {integrity: sha512-Iov+JwFv/2HcTpcwNMKd8+IWNb8tboQJNQTkAY/LLVK7gGH9jy+LGkVqPxfekHl+yMmiqXszdGWXgkfml7hjqA==}
     engines: {node: '>= 0.4'}
@@ -1359,6 +1367,10 @@ snapshots:
   scheduler@0.28.0: {}
 
   set-blocking@2.0.0: {}
+
+  shared-loading-indicator@2.0.1(react@19.3.0):
+    dependencies:
+      react: 19.3.0
 
   shell-quote@1.9.0: {}
 

@@ -24,6 +24,7 @@
 		"qrcode": "^1.5.4",
 		"react": "^19.1.0",
 		"react-dom": "^19.1.0",
+		"shared-loading-indicator": "^2.0.1",
 		"tsx": "^4.20.0"
 	},
 	"devDependencies": {

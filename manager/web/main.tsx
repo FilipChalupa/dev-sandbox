@@ -4,6 +4,7 @@ import { api, type LoginState, type Sandbox, type UpdateCheck } from './api'
 import { LangContext, detectLang, languages, saveLang, useT, type Lang } from './i18n'
 import { Terminal } from './Terminal'
 import QRCode from 'qrcode'
+import { Loading, SharedLoadingIndicatorContextProvider, SharedProgressLoadingIndicator, useLocalLoading, useMirrorLoading } from 'shared-loading-indicator'
 import './style.css'
 
 function useSandboxes() {
@@ -36,7 +37,10 @@ function Root() {
 	}
 	return (
 		<LangContext.Provider value={lang}>
-			<App lang={lang} onLang={choose} />
+			<SharedLoadingIndicatorContextProvider>
+				<SharedProgressLoadingIndicator />
+				<App lang={lang} onLang={choose} />
+			</SharedLoadingIndicatorContextProvider>
 		</LangContext.Provider>
 	)
 }
@@ -56,6 +60,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 	const { list, error, refresh, setError } = useSandboxes()
 	const [modal, setModal] = useState<Modal | null>(null)
 	const [note, setNote] = useState('')
+	const [, setBusy] = useLocalLoading()
 	const [lanHost, setLanHost] = useState('')
 	const [updates, setUpdates] = useState<{ sandbox: UpdateCheck; manager: UpdateCheck | null } | null>(null)
 	useEffect(() => {
@@ -70,27 +75,34 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 	const close = () => setModal(null)
 
 	const run = async (fn: () => Promise<unknown>) => {
+		setBusy(true)
 		try {
 			await fn()
 			await refresh()
 		} catch (e) {
 			setError(e instanceof Error ? e.message : String(e))
+		} finally {
+			setBusy(false)
 		}
 	}
 
 	const updateImage = async () => {
 		setNote(t('updating'))
+		setBusy(true)
 		try {
 			await api.update_image()
 			setNote(t('updated'))
 			api.updates().then(setUpdates).catch(() => {})
 		} catch (e) {
 			setNote(`${t('error')}: ${e instanceof Error ? e.message : e}`)
+		} finally {
+			setBusy(false)
 		}
 	}
 
 	const updateManager = async () => {
 		setNote(t('updatingManager'))
+		setBusy(true)
 		try {
 			await api.self_update()
 			// The manager goes away and comes back; reload once it answers again.
@@ -101,9 +113,13 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 					location.reload()
 				} catch {}
 			}, 2000)
-			setTimeout(() => clearInterval(poll), 120_000)
+			setTimeout(() => {
+				clearInterval(poll)
+				setBusy(false)
+			}, 120_000)
 		} catch (e) {
 			setNote(`${t('error')}: ${e instanceof Error ? e.message : e}`)
+			setBusy(false)
 		}
 	}
 
@@ -126,7 +142,10 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 			{note && <p className="note">{note}</p>}
 			{error && <p className="error">{t('error')}: {error}</p>}
 			{list === null ? (
-				<p>{t('loading')}</p>
+				<>
+					<Loading />
+					<p>{t('loading')}</p>
+				</>
 			) : list.length === 0 ? (
 				<p className="empty">{t('empty')}</p>
 			) : (
@@ -201,6 +220,7 @@ function SandboxCard({ s, lanHost, run, setModal, setError }: {
 }) {
 	const t = useT()
 	const [busy, setBusy] = useState<'share' | 'save' | ''>('')
+	useMirrorLoading(busy !== '')
 	const [saved, setSaved] = useState('')
 	const running = s.container.running
 	const st = s.status
@@ -343,6 +363,7 @@ function Login({ name, loggedIn, onClose, onTerminal }: { name: string; loggedIn
 	const send = async (e: FormEvent) => {
 		e.preventDefault()
 		try {
+			setSentAt(Date.now())
 			setState(await api.login.code(name, code))
 			setCode('')
 		} catch (e) {
@@ -351,6 +372,8 @@ function Login({ name, loggedIn, onClose, onTerminal }: { name: string; loggedIn
 	}
 	const success = loggedIn || Boolean(state?.success)
 	const failed = state?.done && !success
+	const [sentAt, setSentAt] = useState(0)
+	useMirrorLoading(!success && !failed && !error && (!state?.url || (sentAt > 0 && Date.now() - sentAt < 15_000 && !state?.invalidCode)))
 	useEffect(() => {
 		if (state?.success && !loggedIn) {
 			const id = setTimeout(onClose, 4000)
@@ -450,6 +473,7 @@ function Diagnostics({ onClose }: { onClose: () => void }) {
 	const t = useT()
 	const [d, setD] = useState<any>(null)
 	const [err, setErr] = useState('')
+	useMirrorLoading(!d && !err)
 	useEffect(() => {
 		api.diagnostics().then(setD).catch((e) => setErr(String(e)))
 	}, [])
@@ -552,7 +576,7 @@ function SandboxForm({ existing, onSubmit, onCancel }: { existing?: Sandbox; onS
 	const [cpus, setCpus] = useState(existing?.cpus ?? 2)
 	const [idleStopHours, setIdleStopHours] = useState(existing?.idleStopHours ?? 4)
 	const [lanPreview, setLanPreview] = useState(existing?.lanPreview ?? false)
-	const [busy, setBusy] = useState(false)
+	const [busy, setBusy] = useLocalLoading()
 	const submit = async (e: FormEvent) => {
 		e.preventDefault()
 		setBusy(true)

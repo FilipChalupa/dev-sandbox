@@ -1,4 +1,4 @@
-:root { color-scheme: light dark; --bg: #f6f7f9; --card: #fff; --text: #1b1f24; --muted: #6b7280; --line: #e5e7eb; --primary: #2563eb; --on: #16a34a; --warn: #d97706; --off: #9ca3af; --danger: #dc2626; }
+:root { color-scheme: light dark; --ProgressLoadingIndicator-color: #2563eb; --bg: #f6f7f9; --card: #fff; --text: #1b1f24; --muted: #6b7280; --line: #e5e7eb; --primary: #2563eb; --on: #16a34a; --warn: #d97706; --off: #9ca3af; --danger: #dc2626; }
 @media (prefers-color-scheme: dark) { :root { --bg: #0f1115; --card: #171a21; --text: #e6e8eb; --muted: #9aa3ad; --line: #2a2f3a; } }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, sans-serif; }
