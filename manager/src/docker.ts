@@ -11,10 +11,72 @@ const containerName = (name: string) => config.containerPrefix + name
 export async function containerState(name: string) {
 	try {
 		const info = await docker.getContainer(containerName(name)).inspect()
-		return { exists: true, running: info.State.Running, status: info.State.Status, image: info.Config.Image }
+		return {
+			exists: true,
+			running: info.State.Running,
+			status: info.State.Status,
+			image: info.Config.Image,
+			imageId: info.Image,
+			exitCode: info.State.Running ? 0 : info.State.ExitCode,
+			finishedAt: info.State.Running ? '' : info.State.FinishedAt,
+		}
 	} catch {
-		return { exists: false, running: false, status: 'missing', image: '' }
+		return { exists: false, running: false, status: 'missing', image: '', imageId: '', exitCode: 0, finishedAt: '' }
 	}
+}
+
+// Id of the sandbox image Docker has locally, to spot containers on an old one.
+let imageIdCache = { at: 0, id: '' }
+export async function currentImageId() {
+	if (Date.now() - imageIdCache.at < 30_000) return imageIdCache.id
+	try {
+		imageIdCache = { at: Date.now(), id: (await docker.getImage(config.image).inspect()).Id }
+	} catch {
+		imageIdCache = { at: Date.now(), id: '' }
+	}
+	return imageIdCache.id
+}
+
+// Why a stopped container stopped: the last meaningful log lines.
+export async function failureReason(name: string) {
+	const text = await logs(name, 40)
+	const lines = text.split('\n').map((l) => l.trim()).filter(Boolean)
+	const marked = lines.filter((l) => /CLONE FAILED|fatal:|error|Error|denied|not found/i.test(l))
+	return (marked.length ? marked : lines).slice(-3).join('\n')
+}
+
+// Can this URL be reached with this token? Uses git from the manager image.
+export async function checkRepo(repoUrl: string, token: string, username: string) {
+	const { execFile } = await import('node:child_process')
+	const { promisify } = await import('node:util')
+	const run = promisify(execFile)
+	let url = repoUrl
+	if (/^git@([^:]+):(.+)$/.test(url)) url = url.replace(/^git@([^:]+):(.+)$/, 'https://$1/$2')
+	if (/^ssh:\/\/git@([^/]+)\/(.+)$/.test(url)) url = url.replace(/^ssh:\/\/git@([^/]+)\/(.+)$/, 'https://$1/$2')
+	try {
+		const u = new URL(url)
+		if (token) {
+			const host = u.host
+			const user = username || (host === 'bitbucket.org' ? 'x-token-auth' : host === 'github.com' ? 'x-access-token' : host === 'gitlab.com' ? 'oauth2' : 'token')
+			u.username = user
+			u.password = token
+		}
+		const { stdout } = await run('git', ['ls-remote', '--heads', u.toString()], { timeout: 20_000, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })
+		const branches = stdout.split('\n').map((l) => l.split('\t')[1]?.replace('refs/heads/', '')).filter(Boolean) as string[]
+		return { ok: true, branches, error: '' }
+	} catch (e: any) {
+		const msg = String(e?.stderr || e?.message || e).split('\n').filter(Boolean).slice(-2).join(' ')
+		return { ok: false, branches: [] as string[], error: msg }
+	}
+}
+
+// Log out of Claude for all sandboxes (the login is shared).
+export async function claudeLogout(runningSandbox: string | undefined, credentialsFile: string) {
+	if (runningSandbox) {
+		await run(runningSandbox, ['claude', 'auth', 'logout'], 30_000).catch(() => {})
+	}
+	const fs = await import('node:fs/promises')
+	await fs.rm(credentialsFile, { force: true })
 }
 
 // Containers are disposable: state lives in the mounts, so starting always

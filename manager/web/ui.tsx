@@ -214,6 +214,8 @@ export function Modal({ title, onClose, children, wide, className = '' }: { titl
 export function humanizeError(msg: string, t: ReturnType<typeof useT>): string {
 	const port = /Bind for [\d.]+:(\d+) failed|port is already allocated/i.exec(msg)
 	if (port) return t('errPort', { port: port[1] ?? '' })
+	if (/CLONE FAILED.*(Authentication|could not read Username|403|401|denied)/i.test(msg) || /Authentication failed|could not read Username|Invalid username or password/i.test(msg)) return t('errCloneAuth')
+	if (/CLONE FAILED|not found|does not exist|Repository not found/i.test(msg)) return t('errCloneNotFound')
 	if (/No such image|pull access denied|manifest unknown/i.test(msg)) return t('errImage')
 	if (/docker\.sock|ECONNREFUSED|ENOENT.*docker|connect EACCES/i.test(msg)) return t('errDocker')
 	if (/timed out|timeout/i.test(msg)) return t('errTimeout')

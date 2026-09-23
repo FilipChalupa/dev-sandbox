@@ -171,3 +171,8 @@ pre.logs { font-size: 12px; white-space: pre-wrap; max-height: 60vh; overflow: a
 .spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; display: inline-block; animation: spin .8s linear infinite; flex: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
 button.busy { border-color: var(--primary); color: var(--primary); }
+.failure { display: grid; gap: 6px; padding: 10px 12px; border-radius: 10px; background: var(--danger-bg); font-size: 13px; }
+.failure-title { display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--danger); }
+.failure pre { max-height: 120px; }
+.check-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--bg); color: var(--text); width: 100%; resize: vertical; }

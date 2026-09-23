@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# Usage: sandbox-save [message]
+# Usage: sandbox-save [--skip-checks] [message]
 # Commits everything and pushes the working branch. Used by the autosave loop
 # and by the "Send to developer" button. Refuses to touch a repository in the
-# middle of a merge or rebase.
+# middle of a merge or rebase. Before pushing it runs the project's lint and
+# typecheck scripts when it has them; if they fail the commit stays local
+# (exit 5) unless --skip-checks is given.
 set -uo pipefail
 source sandbox-lib
+skip_checks=0
+if [ "${1:-}" = "--skip-checks" ]; then skip_checks=1; shift; fi
 cd "$SANDBOX_WORKSPACE" || exit 1
 [ -d .git ] || { echo "not a git repository"; exit 1; }
 if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ] || [ -f .git/MERGE_HEAD ]; then
@@ -18,7 +22,20 @@ if [ -n "$(git --no-optional-locks status --porcelain)" ]; then
 	git commit -q -m "$msg" && echo "committed: $msg"
 fi
 if git remote get-url origin >/dev/null 2>&1 && git rev-parse --verify -q HEAD >/dev/null; then
-	if ! git rev-parse --verify -q '@{u}' >/dev/null || [ -n "$(git rev-list '@{u}..HEAD' 2>/dev/null)" ]; then
+	if ! git rev-parse --verify -q '@{u}' >/dev/null 2>&1 || [ -n "$(git rev-list '@{u}..HEAD' 2>/dev/null)" ]; then
+		if [ "$skip_checks" = 0 ] && [ -f package.json ] && [ -d node_modules ]; then
+			pm="$(package_manager)"
+			for check in lint typecheck; do
+				jq -e --arg c "$check" '.scripts[$c]' package.json >/dev/null 2>&1 || continue
+				echo "running $check…"
+				if ! out="$(timeout 300 "$pm" run "$check" 2>&1)"; then
+					echo "CHECK FAILED ($check):"
+					tail -n 12 <<<"$out"
+					echo "committed locally, not pushed. Ask Claude to fix the $check errors, or send anyway."
+					exit 5
+				fi
+			done
+		fi
 		if out="$(git push -u origin "$SANDBOX_BRANCH" 2>&1)"; then
 			echo "pushed $SANDBOX_BRANCH"
 		else

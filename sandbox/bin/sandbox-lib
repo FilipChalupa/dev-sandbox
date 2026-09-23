@@ -19,6 +19,36 @@ write_state() { printf '%s' "$2" > "$(state_file "$1")"; }
 
 strip_ansi() { sed -E 's/\x1b\[[0-9;?]*[A-Za-z]//g; s/\x1b\][^\a]*\a//g; s/\r//g'; }
 
+# ssh style remotes become https so a token can be used.
+to_https_url() {
+	local url="$1"
+	if [[ "$url" =~ ^git@([^:]+):(.+)$ ]]; then
+		printf 'https://%s/%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+	elif [[ "$url" =~ ^ssh://git@([^/]+)/(.+)$ ]]; then
+		printf 'https://%s/%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+	else
+		printf '%s' "$url"
+	fi
+}
+
+# User name that goes with a token, by hosting provider.
+git_username_for() {
+	case "$1" in
+		bitbucket.org) echo x-token-auth ;;
+		github.com) echo x-access-token ;;
+		gitlab.com) echo oauth2 ;;
+		*) echo token ;;
+	esac
+}
+
+# Package manager of the project in the current directory.
+package_manager() {
+	[ -f bun.lockb ] || [ -f bun.lock ] && { echo bun; return; }
+	[ -f pnpm-lock.yaml ] && { echo pnpm; return; }
+	[ -f yarn.lock ] && { echo yarn; return; }
+	echo npm
+}
+
 preview_password() {
 	local f; f="$(state_file preview-password)"
 	if [ -n "${SANDBOX_PREVIEW_PASSWORD:-}" ]; then

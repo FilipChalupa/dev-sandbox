@@ -9,6 +9,7 @@ export type SandboxConfig = {
 	hostPort: number
 	autosaveMinutes: number
 	gitUsername: string
+	instructions: string
 	autostart: boolean
 	memoryGb: number
 	cpus: number
@@ -24,7 +25,7 @@ const file = () => managerDir('sandboxes.json')
 export async function readAll(): Promise<SandboxConfig[]> {
 	try {
 		const list = JSON.parse(await fs.readFile(file(), 'utf8')) as Partial<SandboxConfig>[]
-		return list.map((s) => ({ ...defaults, autostart: false, gitUsername: '', ...s }) as SandboxConfig)
+		return list.map((s) => ({ ...defaults, autostart: false, gitUsername: '', instructions: '', ...s }) as SandboxConfig)
 	} catch {
 		return []
 	}
@@ -76,6 +77,7 @@ export async function create(input: Partial<SandboxConfig> & { name: string; tok
 		hostPort: port,
 		autosaveMinutes: input.autosaveMinutes ?? 10,
 		gitUsername: input.gitUsername ?? '',
+		instructions: input.instructions ?? '',
 		autostart: input.autostart ?? false,
 		memoryGb: input.memoryGb ?? defaults.memoryGb,
 		cpus: input.cpus ?? defaults.cpus,
@@ -87,6 +89,7 @@ export async function create(input: Partial<SandboxConfig> & { name: string; tok
 	await fs.mkdir(managerDir(sandbox.name), { recursive: true })
 	await fs.mkdir(managerDir('claude'), { recursive: true })
 	if (input.token) await setToken(sandbox.name, input.token)
+	await writeInstructions(sandbox.name, sandbox.instructions)
 	await writeAll([...list, sandbox])
 	return sandbox
 }
@@ -104,6 +107,10 @@ export async function update(name: string, patch: Partial<SandboxConfig> & { tok
 		}
 	}
 	if (patch.gitUsername !== undefined) sandbox.gitUsername = patch.gitUsername
+	if (patch.instructions !== undefined) {
+		sandbox.instructions = patch.instructions
+		await writeInstructions(name, patch.instructions)
+	}
 	if (patch.branch) sandbox.branch = patch.branch
 	if (patch.autosaveMinutes !== undefined) sandbox.autosaveMinutes = patch.autosaveMinutes
 	if (patch.autostart !== undefined) sandbox.autostart = Boolean(patch.autostart)
@@ -121,6 +128,14 @@ export async function remove(name: string, deleteFiles: boolean) {
 	await writeAll(list.filter((s) => s.name !== name))
 	await fs.rm(managerDir(name), { recursive: true, force: true })
 	if (deleteFiles) await fs.rm(path.join(config.dataDir, name), { recursive: true, force: true })
+}
+
+// The sandbox appends this file to the rules Claude reads (CLAUDE.local.md).
+export async function writeInstructions(name: string, text: string) {
+	await fs.mkdir(managerDir(name), { recursive: true })
+	const f = managerDir(name, 'instructions.md')
+	if (text.trim()) await fs.writeFile(f, text.trim() + '\n')
+	else await fs.rm(f, { force: true })
 }
 
 export async function setToken(name: string, token: string) {

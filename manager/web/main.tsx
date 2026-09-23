@@ -39,9 +39,12 @@ type Modal =
 	| { kind: 'diagnostics' }
 	| { kind: 'changes'; name: string }
 	| { kind: 'qr'; text: string; title: string }
+	| { kind: 'logout' }
+	| { kind: 'sendAnyway'; name: string; output: string }
 
 // Which of the three steps a sandbox is on, and whether the person has to act.
 function stageOf(s: Sandbox) {
+	if (!s.container.running && s.failure) return { step: 1, tone: 'error' as const, attention: true }
 	if (!s.container.running) return { step: 1, tone: 'off' as const, attention: false }
 	if (!s.status) return { step: 2, tone: 'warn' as const, attention: false, starting: true }
 	if (!s.status.claude.loggedIn) return { step: 2, tone: 'warn' as const, attention: true }
@@ -110,7 +113,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 	useEffect(() => {
 		if (!location.hash.startsWith('#new')) return
 		const q = new URLSearchParams(location.hash.replace(/^#new\??/, ''))
-		setModal({ kind: 'create', initial: { name: q.get('name') ?? '', repoUrl: q.get('repo') ?? '', branch: q.get('branch') ?? '', token: q.get('token') ?? '' } })
+		setModal({ kind: 'create', initial: { name: q.get('name') ?? '', repoUrl: q.get('repo') ?? '', branch: q.get('branch') ?? '', token: q.get('token') ?? '', instructions: q.get('inst') ?? '' } })
 		history.replaceState(null, '', location.pathname)
 	}, [])
 
@@ -195,6 +198,8 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 							{ label: t('updateManager'), icon: 'restart', onClick: updateManager, badge: updates?.manager?.updateAvailable },
 							{ label: t('diagnostics'), icon: 'stethoscope', onClick: () => setModal({ kind: 'diagnostics' }) },
 							'sep',
+							{ label: t('logoutClaude'), icon: 'login', danger: true, onClick: () => setModal({ kind: 'logout' }) },
+							'sep',
 							{
 								custom: (
 									<label className="menu-lang">
@@ -257,6 +262,25 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 					<Qr text={modal.text} size={640} />
 					<p className="muted small">{t('qrContains')}</p>
 					<div className="access-row"><span className="k" /><code className="v">{modal.text}</code><Copy text={modal.text} /></div>
+				</Modal>
+			)}
+			{modal?.kind === 'logout' && (
+				<Modal title={<><Icon name="login" /> {t('logoutClaude')}</>} onClose={close}>
+					<p>{t('logoutConfirm')}</p>
+					<div className="actions">
+						<button onClick={close}>{t('cancel')}</button>
+						<button className="danger-btn" onClick={async () => { await run(() => api.logoutClaude(), t('loggedOut')); close() }}>{t('logoutClaude')}</button>
+					</div>
+				</Modal>
+			)}
+			{modal?.kind === 'sendAnyway' && (
+				<Modal title={<><Icon name="alert" /> {t('checksFailed')}</>} onClose={close}>
+					<p>{t('askClaudeToFix')}</p>
+					<pre className="logs small">{modal.output}</pre>
+					<div className="actions">
+						<button onClick={close}>{t('cancel')}</button>
+						<button className="primary" onClick={async () => { close(); await run(async () => { const r = await api.save(modal.name, true); toast('ok', `${t('sent')} (${r.output.split('\n').pop()})`) }) }}><Icon name="send" /> {t('sendAnyway')}</button>
+					</div>
 				</Modal>
 			)}
 			{modal?.kind === 'delete' && (
@@ -393,8 +417,18 @@ function SandboxCard({ s, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
 	const action = async (what: 'share' | 'unshare' | 'save' | 'restart-claude' | 'dev-start' | 'dev-stop') => {
 		setBusy(what === 'unshare' ? 'share' : what === 'dev-start' ? 'dev' : what === 'restart-claude' || what === 'dev-stop' ? '' : what)
 		try {
+			if (what === 'save') {
+				try {
+					const r = await api.save(s.name, false)
+					toast('ok', `${t('sent')} (${r.output.split('\n').pop()})`)
+				} catch (e) {
+					const msg = e instanceof Error ? e.message : String(e)
+					if (/CHECK FAILED/.test(msg)) setModal({ kind: 'sendAnyway', name: s.name, output: msg })
+					else throw e
+				}
+				return
+			}
 			const r = await api.action(s.name, what)
-			if (what === 'save') toast('ok', `${t('sent')} (${r.output.split('\n').pop()})`)
 			if (what === 'restart-claude' || what === 'dev-stop') toast('ok', r.output)
 			if (what === 'dev-start') toast('ok', `${t('devStarted')} ${r.output.split('\n').pop() ?? ''}`)
 			const until = Date.now() + 45_000
@@ -411,7 +445,8 @@ function SandboxCard({ s, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
 	}
 
 	const statusPill =
-		!running ? <Pill tone="off">{t('stopped')}</Pill>
+		!running && s.failure ? <Pill tone="error">{t('failed')}</Pill>
+		: !running ? <Pill tone="off">{t('stopped')}</Pill>
 		: stage.starting ? <Pill tone="warn" pulse>{t('starting')}</Pill>
 		: stage.attention ? <Pill tone="warn">{t('needsLogin')}</Pill>
 		: working ? <Pill tone="work" pulse>{t('claudeWorking')}</Pill>
@@ -454,6 +489,8 @@ function SandboxCard({ s, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
 					)
 				)}
 				{running && st && !st.claude.serverRunning && stage.step === 3 && <Pill tone="error">{t('claudeOffline')}</Pill>}
+				{running && st && st.preview.proxyUp === false && <Pill tone="error">{t('proxyDown')}</Pill>}
+				{s.outdated && <Pill tone="warn">{t('outdated')} · <button className="pill-link" onClick={() => run(() => api.start(s.name))}>{t('restart')}</button></Pill>}
 				<span className="grow" />
 				{primary}
 				<Menu icon="more" label={undefined} items={menuItems} />
@@ -467,6 +504,13 @@ function SandboxCard({ s, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
 						<span><Icon name="folder" size={13} /> ~/Sandboxes/{s.name}</span>
 					</div>
 
+					{!running && s.failure && (
+						<div className="failure">
+							<div className="failure-title"><Icon name="alert" /> {t('failureReason')}</div>
+							<div>{humanizeError(s.failure, t)}</div>
+							<pre className="logs small">{s.failure}</pre>
+						</div>
+					)}
 					{stage.step < 3 && (
 						<ol className="steps">
 							<li className={stage.step > 1 ? 'done' : 'now'}>{t('stepStart')}</li>
@@ -753,7 +797,20 @@ function SandboxForm({ existing, initial, onSubmit, onCancel }: { existing?: San
 	const [cpus, setCpus] = useState(existing?.cpus ?? 2)
 	const [idleStopHours, setIdleStopHours] = useState(existing?.idleStopHours ?? 4)
 	const [lanPreview, setLanPreview] = useState(existing?.lanPreview ?? false)
+	const [instructions, setInstructions] = useState(existing?.instructions ?? initial?.instructions ?? '')
 	const [busy, setBusy] = useLocalLoading()
+	const [check, setCheck] = useState<{ state: 'idle' | 'busy' | 'ok' | 'fail'; branches: string[]; error: string }>({ state: 'idle', branches: [], error: '' })
+	const doCheck = async () => {
+		if (!repoUrl) return
+		setCheck({ state: 'busy', branches: [], error: '' })
+		try {
+			const r = await api.checkRepo({ repoUrl, token: token || (existing?.hasToken ? '' : ''), username: existing?.gitUsername })
+			setCheck({ state: r.ok ? 'ok' : 'fail', branches: r.branches, error: r.error })
+		} catch (e) {
+			setCheck({ state: 'fail', branches: [], error: e instanceof Error ? e.message : String(e) })
+		}
+	}
+	const branchName = branch || `sandbox/${name || 'name'}`
 	const nameOk = /^[a-z0-9][a-z0-9-]*$/.test(name)
 	const inviteLink = () => {
 		const q = new URLSearchParams()
@@ -761,12 +818,13 @@ function SandboxForm({ existing, initial, onSubmit, onCancel }: { existing?: San
 		if (repoUrl) q.set('repo', repoUrl)
 		if (branch) q.set('branch', branch)
 		if (token) q.set('token', token)
+		if (instructions) q.set('inst', instructions)
 		return `${location.origin}${location.pathname}#new?${q.toString()}`
 	}
 	const submit = async (e: FormEvent) => {
 		e.preventDefault()
 		setBusy(true)
-		const body: Record<string, unknown> = { repoUrl, branch: branch || undefined, autostart, memoryGb, cpus, idleStopHours, lanPreview }
+		const body: Record<string, unknown> = { repoUrl, branch: branch || undefined, autostart, memoryGb, cpus, idleStopHours, lanPreview, instructions }
 		if (!existing) body.name = name
 		if (token) body.token = token
 		await onSubmit(body)
@@ -795,6 +853,20 @@ function SandboxForm({ existing, initial, onSubmit, onCancel }: { existing?: San
 				<label>
 					{t('branch')}
 					<input value={branch} onChange={(e) => setBranch(e.target.value)} placeholder={`sandbox/${name || 'name'}`} />
+				</label>
+				{repoUrl && (
+					<div className="check-row">
+						<button type="button" onClick={doCheck} disabled={check.state === 'busy'}>{check.state === 'busy' ? <Spinner /> : <Icon name="git" />} {check.state === 'busy' ? t('checking') : t('checkRepo')}</button>
+						{check.state === 'ok' && (
+							<span className="ok-text"><Icon name="check" size={14} /> {t('repoOk')}, {check.branches.includes(branchName) ? t('repoOkBranch', { branch: branchName }) : t('repoOkNewBranch', { branch: branchName })}</span>
+						)}
+						{check.state === 'fail' && <span className="error"><Icon name="alert" size={14} /> {t('repoFail')}: {humanizeError(check.error, t)}</span>}
+					</div>
+				)}
+				<label>
+					{t('instructions')}
+					<textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} rows={3} />
+					<small>{t('instructionsHint')}</small>
 				</label>
 				<label className="check">
 					<input type="checkbox" checked={autostart} onChange={(e) => setAutostart(e.target.checked)} /> {t('autostart')}

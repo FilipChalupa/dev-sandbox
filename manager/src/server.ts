@@ -49,12 +49,16 @@ async function idleSweep() {
 setInterval(() => idleSweep().catch(() => {}), 60_000)
 
 async function describe(s: store.SandboxConfig) {
-	const [container, status, hasToken] = await Promise.all([
+	const [container, status, hasToken, imageId] = await Promise.all([
 		dk.containerState(s.name),
 		store.readStatus(s.name),
 		store.hasToken(s.name),
+		dk.currentImageId(),
 	])
-	return { ...s, lanPort: store.lanPort(s), hasToken, container, status: container.running ? status : null }
+	const failed = container.exists && !container.running && container.exitCode !== 0
+	const failure = failed ? await dk.failureReason(s.name) : ''
+	const outdated = container.running && Boolean(imageId) && container.imageId !== imageId
+	return { ...s, lanPort: store.lanPort(s), hasToken, container, failure, outdated, status: container.running ? status : null }
 }
 
 app.get('/api/sandboxes', async () => json(await Promise.all((await store.readAll()).map(describe))))
@@ -114,7 +118,37 @@ app.get('/api/sandboxes/:name/logs', async (c) => c.text(await dk.logs(c.req.par
 
 app.post('/api/sandboxes/:name/share', action(['sandbox-share']))
 app.post('/api/sandboxes/:name/unshare', action(['sandbox-unshare']))
-app.post('/api/sandboxes/:name/save', action(['sandbox-save', 'Changes from the sandbox']))
+app.post('/api/sandboxes/:name/save', async (c) => {
+	try {
+		const args = c.req.query('force') === '1' ? ['--skip-checks'] : []
+		const r = await dk.run(c.req.param('name'), ['sandbox-save', ...args, 'Changes from the sandbox'], 400_000)
+		return json({ ok: r.code === 0, checksFailed: r.code === 5, output: r.output }, r.code === 0 ? 200 : 400)
+	} catch (e) {
+		return fail(e)
+	}
+})
+
+app.post('/api/check-repo', async (c) => {
+	try {
+		const { repoUrl, token, username } = await c.req.json()
+		const creds = store.splitCredentials(String(repoUrl ?? ''))
+		return json(await dk.checkRepo(creds.url, String(token || creds.token || ''), String(username || creds.username || '')))
+	} catch (e) {
+		return fail(e)
+	}
+})
+
+app.post('/api/claude/logout', async () => {
+	try {
+		const list = await store.readAll()
+		let running: string | undefined
+		for (const s of list) if ((await dk.containerState(s.name)).running) { running = s.name; break }
+		await dk.claudeLogout(running, path.join(config.dataDir, '.manager', 'claude', '.credentials.json'))
+		return json({ ok: true })
+	} catch (e) {
+		return fail(e)
+	}
+})
 app.post('/api/sandboxes/:name/restart-claude', action(['sandbox-claude-start']))
 app.post('/api/sandboxes/:name/dev-start', async (c) => {
 	try {

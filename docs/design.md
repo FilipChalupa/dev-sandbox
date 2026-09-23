@@ -92,6 +92,17 @@ UI:
   activity and Claude version,
 - per sandbox memory and CPU limits, and an idle stop (hours without Claude
   activity, git commits or server changes),
+- a stopped sandbox that exited with an error shows why (last log lines,
+  translated: bad token, missing repository, …),
+- "Check access" in the form runs `git ls-remote` with the token before the
+  sandbox is ever started,
+- per sandbox instructions from the developer, appended to Claude's rules
+  (also carried by the invite link),
+- "new sandbox version, restart" when a running container is on an older
+  image than the one downloaded,
+- "Send to developer" runs the project's `lint` and `typecheck` scripts
+  first; on failure the commit stays local and the UI offers "send anyway",
+- log out of Claude for all sandboxes,
 - English and Czech, switchable.
 
 ### Sandbox container
@@ -100,7 +111,7 @@ Image: Debian based, Node 24 (corepack/pnpm enabled) with fnm for other Node
 versions, git, ffmpeg, tmux, Caddy, cloudflared, Chromium, Claude Code. Runs as an
 unprivileged user. Empty projects get a default `.gitignore`.
 
-Processes inside:
+Processes inside (the entrypoint restarts any of them that dies):
 
 - `claude remote-control --name <sandbox> --permission-mode bypassPermissions`
   in tmux, wrapped in a supervisor loop that restarts it,
@@ -146,6 +157,13 @@ coming through the tunnel.
    and opens `http://localhost:8787`.
 3. In the UI: New sandbox, paste the repository URL and token, Start, log in to
    Claude in the embedded terminal, click "Open in claude.ai/code".
+
+## Tests
+
+`manager`: `pnpm test` (vitest) covers credential splitting, registry name
+parsing, port allocation and the instructions file. `sandbox/test/run.sh`
+covers the library helpers and the pre-push guard against a bare repository.
+CI runs both before building images.
 
 ## Findings from the prototype
 

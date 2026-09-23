@@ -16,12 +16,7 @@ chmod 600 "$(state_file preview-password)"
 # --- git: URL, credentials ------------------------------------------------
 repo_url="${SANDBOX_REPO_URL:-}"
 token="${SANDBOX_GIT_TOKEN:-$(read_state git-token)}"
-# Token auth needs HTTPS. Convert ssh style URLs.
-if [[ "$repo_url" =~ ^git@([^:]+):(.+)$ ]]; then
-	repo_url="https://${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
-elif [[ "$repo_url" =~ ^ssh://git@([^/]+)/(.+)$ ]]; then
-	repo_url="https://${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
-fi
+repo_url="$(to_https_url "$repo_url")"   # token auth needs https
 git config --global safe.directory '*'
 git config --global init.defaultBranch main
 git config --global push.autoSetupRemote true
@@ -30,15 +25,7 @@ git config --global core.hooksPath /opt/sandbox/hooks   # our guard; the reposit
 write_state branch "$SANDBOX_BRANCH"
 if [ -n "$repo_url" ] && [ -n "$token" ]; then
 	host="$(printf '%s' "$repo_url" | sed -E 's#^https?://([^/]+).*#\1#')"
-	user="${SANDBOX_GIT_USERNAME:-}"
-	if [ -z "$user" ]; then
-		case "$host" in
-			bitbucket.org) user=x-token-auth ;;
-			github.com) user=x-access-token ;;
-			gitlab.com) user=oauth2 ;;
-			*) user=token ;;
-		esac
-	fi
+	user="${SANDBOX_GIT_USERNAME:-$(git_username_for "$host")}"
 	printf 'https://%s:%s@%s\n' "$user" "$token" "$host" > "$(state_file git-credentials)"
 	chmod 600 "$(state_file git-credentials)"
 	git config --global credential.helper "store --file=$(state_file git-credentials)"
@@ -51,7 +38,11 @@ if [ ! -d .git ]; then
 		log "cloning $repo_url"
 		git init -q .
 		git remote add origin "$repo_url"
-		git fetch -q origin
+		if ! out="$(GIT_TERMINAL_PROMPT=0 git fetch -q origin 2>&1)"; then
+			log "CLONE FAILED: $(tail -n 2 <<<"$out" | tr '\n' ' ')"
+			rm -rf .git
+			exit 3
+		fi
 		git remote set-head origin -a >/dev/null 2>&1 || true
 		default="$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
 		[ -n "$default" ] && git checkout -q "$default" 2>/dev/null || true
@@ -101,6 +92,11 @@ jq --arg ws "$SANDBOX_WORKSPACE" '
 export SANDBOX_NAME SANDBOX_BRANCH SANDBOX_PREVIEW_URL
 envsubst '$SANDBOX_NAME $SANDBOX_BRANCH $SANDBOX_PREVIEW_URL' \
 	< /opt/sandbox/templates/CLAUDE.local.md > CLAUDE.local.md
+if [ -s "$(state_file instructions.md)" ]; then
+	printf '\n## Instructions from the developer\n\nThese come from the developer who set this sandbox up and take precedence over the general rules above.\n\n' >> CLAUDE.local.md
+	cat "$(state_file instructions.md)" >> CLAUDE.local.md
+	echo >> CLAUDE.local.md
+fi
 mkdir -p .git/info
 grep -qx 'CLAUDE.local.md' .git/info/exclude 2>/dev/null || echo 'CLAUDE.local.md' >> .git/info/exclude
 for x in .env .playwright-mcp/; do
@@ -108,25 +104,28 @@ for x in .env .playwright-mcp/; do
 done
 
 # --- services -------------------------------------------------------------
-pids=()
-trap 'log "shutting down"; sandbox-unshare >/dev/null 2>&1 || true; tmux kill-server 2>/dev/null || true; kill "${pids[@]}" 2>/dev/null || true; exit 0' TERM INT
+# Each service runs in the background; the loop at the end restarts any that
+# died. Claude's server has its own loop inside tmux.
+declare -A svc_cmd svc_pid
+start_service() { svc_cmd[$1]="$2"; bash -c "${svc_cmd[$1]}" & svc_pid[$1]=$!; }
+
+trap 'log "shutting down"; sandbox-unshare >/dev/null 2>&1 || true; tmux kill-server 2>/dev/null || true; kill "${svc_pid[@]}" 2>/dev/null || true; exit 0' TERM INT
 
 sandbox-caddy-reload >/dev/null
-caddy run --config "$(state_file Caddyfile)" >> "$(state_file caddy.log)" 2>&1 &
-pids+=($!)
-
-if [ "${SANDBOX_AUTOSAVE_MINUTES:-10}" != "0" ]; then
-	sandbox-autosave >> "$(state_file autosave.log)" 2>&1 &
-	pids+=($!)
-fi
-
-sandbox-status-loop &
-pids+=($!)
-
-sandbox-port-watch >> "$(state_file port-watch.log)" 2>&1 &
-pids+=($!)
-
+start_service caddy "exec caddy run --config $(state_file Caddyfile) >> $(state_file caddy.log) 2>&1"
+[ "${SANDBOX_AUTOSAVE_MINUTES:-10}" != "0" ] && start_service autosave "exec sandbox-autosave >> $(state_file autosave.log) 2>&1"
+start_service status "exec sandbox-status-loop"
+start_service ports "exec sandbox-port-watch >> $(state_file port-watch.log) 2>&1"
 sandbox-claude-start >/dev/null
 
 log "sandbox '$SANDBOX_NAME' is up; preview password for user '$SANDBOX_PREVIEW_USER' is in $(state_file preview-password)"
-wait
+while true; do
+	sleep 10
+	for name in "${!svc_cmd[@]}"; do
+		if ! kill -0 "${svc_pid[$name]}" 2>/dev/null; then
+			log "service $name died, restarting"
+			bash -c "${svc_cmd[$name]}" & svc_pid[$name]=$!
+		fi
+	done
+	tmux has-session -t claude 2>/dev/null || { log "claude tmux session gone, restarting"; sandbox-claude-start >/dev/null; }
+done

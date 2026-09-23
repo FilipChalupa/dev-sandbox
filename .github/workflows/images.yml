@@ -1,9 +1,10 @@
-name: Build images
+name: Test and build images
 
 on:
   push:
     branches: [main]
     tags: ['v*']
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -11,7 +12,28 @@ permissions:
   packages: write
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: manager/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: manager
+      - run: pnpm typecheck && pnpm test && pnpm build
+        working-directory: manager
+      - run: bash sandbox/test/run.sh
+      - run: bash -n sandbox/bin/* sandbox/hooks/* installer/*.sh
+
   build:
+    needs: test
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     strategy:
       matrix:

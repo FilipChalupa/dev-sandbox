@@ -50,7 +50,9 @@ Code admin settings.
    Create**, scope *Repositories: read and write*. Copy the token.
 2. Run the manager yourself, click **New sandbox**, fill in the name, the
    repository URL and the token (or paste the URL with the token inside:
-   `https://x-token-auth:TOKEN@bitbucket.org/workspace/repo.git`), and click
+   `https://x-token-auth:TOKEN@bitbucket.org/workspace/repo.git`), click
+   **Check access** to be sure the token works, optionally write
+   instructions for Claude ("work only in `web/`"), and click
    **Copy as a link for a colleague**. Do not click Create unless you want the
    sandbox on your own machine too.
 3. Send the link through a safe channel (a password manager share, a

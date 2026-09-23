@@ -5,6 +5,7 @@ export type Sandbox = {
 	hostPort: number
 	autosaveMinutes: number
 	gitUsername: string
+	instructions: string
 	autostart: boolean
 	memoryGb: number
 	cpus: number
@@ -12,11 +13,13 @@ export type Sandbox = {
 	lanPreview: boolean
 	lanPort: number
 	hasToken: boolean
-	container: { exists: boolean; running: boolean; status: string; image: string }
+	container: { exists: boolean; running: boolean; status: string; image: string; imageId: string; exitCode: number; finishedAt: string }
+	failure: string
+	outdated: boolean
 	status: null | {
 		git: { branch: string; remote: string; dirty: number; ahead: number; lastCommit: string; today: string[]; changed: string[]; shortstat: string }
 		claude: { loggedIn: boolean; email: string; serverRunning: boolean; supervisorRunning: boolean; sessionUrl: string }
-		preview: { url: string; upstreamPort: number; devServerUp: boolean; tunnelUrl: string; user: string; password: string }
+		preview: { url: string; upstreamPort: number; devServerUp: boolean; proxyUp: boolean; tunnelUrl: string; user: string; password: string }
 		lastActivity: string
 		updatedAt: string
 	}
@@ -36,7 +39,7 @@ async function call<T>(method: string, url: string, body?: unknown): Promise<T> 
 	})
 	const text = await res.text()
 	const data = text ? JSON.parse(text) : null
-	if (!res.ok) throw new Error(data?.error ?? res.statusText)
+	if (!res.ok) throw new Error(data?.error ?? data?.output ?? res.statusText)
 	return data
 }
 
@@ -53,6 +56,9 @@ export const api = {
 	self_update: () => call<{ ok: boolean }>('POST', '/api/self-update'),
 	action: (name: string, what: 'share' | 'unshare' | 'save' | 'restart-claude' | 'dev-start' | 'dev-stop') =>
 		call<{ ok: boolean; output: string }>('POST', `/api/sandboxes/${name}/${what}`),
+	save: (name: string, force: boolean) => call<{ ok: boolean; checksFailed?: boolean; output: string }>('POST', `/api/sandboxes/${name}/save?force=${force ? 1 : 0}`),
+	checkRepo: (body: { repoUrl: string; token: string; username?: string }) => call<{ ok: boolean; branches: string[]; error: string }>('POST', '/api/check-repo', body),
+	logoutClaude: () => call<{ ok: boolean }>('POST', '/api/claude/logout'),
 	login: {
 		status: (name: string) => call<LoginState | null>('GET', `/api/sandboxes/${name}/login`),
 		start: (name: string) => call<LoginState>('POST', `/api/sandboxes/${name}/login`),

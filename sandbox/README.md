@@ -49,6 +49,7 @@ can start sessions in it. Status for the manager is in `/state/status.json`.
 | `SANDBOX_PREVIEW_USER` | `preview` | Basic auth user for the shared tunnel |
 | `SANDBOX_PREVIEW_PASSWORD` | generated once | Basic auth password, kept in `/state/preview-password` |
 | `SANDBOX_AUTOSAVE_MINUTES` | `10` | `0` disables the wip autosave commits |
+| `/state/instructions.md` | empty | Extra rules from the developer, appended to `CLAUDE.local.md` |
 | `SANDBOX_PRESERVE_HOST` | `0` | `1` keeps the original `Host` header instead of rewriting it to the upstream |
 
 ## Scripts inside the container
@@ -58,7 +59,9 @@ can start sessions in it. Status for the manager is in `/state/status.json`.
 - `sandbox-unshare`: stop the tunnel.
 - `sandbox-dev-start` / `sandbox-dev-stop`: start or stop the project's dev
   server (package.json scripts, static HTML, or Claude as a fallback).
-- `sandbox-save [message]`: commit everything and push the working branch.
+- `sandbox-save [--skip-checks] [message]`: commit everything and push the
+  working branch; runs the project's `lint` and `typecheck` scripts first
+  and keeps the commit local when they fail.
 - `sandbox-screenshot [path|url] [out.png] [--mobile]`: render the preview with
   headless Chromium (for Claude to check its work).
 - `sandbox-status`: print the status JSON.

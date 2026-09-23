@@ -14,7 +14,7 @@ const ACCEPT = [
 	'application/vnd.docker.distribution.manifest.v2+json',
 ].join(', ')
 
-function parse(image: string) {
+export function parse(image: string) {
 	const [repoTag] = image.split('@')
 	const slash = repoTag.indexOf('/')
 	const registry = slash > 0 && repoTag.slice(0, slash).includes('.') ? repoTag.slice(0, slash) : 'registry-1.docker.io'

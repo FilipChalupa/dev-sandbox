@@ -4,5 +4,5 @@ source sandbox-lib
 interval="${SANDBOX_AUTOSAVE_MINUTES:-10}"
 while true; do
 	sleep "$((interval * 60))"
-	sandbox-save 2>&1 | grep -v -E "^nothing to push$" | sed "s/^/$(date '+%Y-%m-%d %H:%M:%S') /" || true
+	sandbox-save --skip-checks 2>&1 | grep -v -E "^nothing to push$" | sed "s/^/$(date '+%Y-%m-%d %H:%M:%S') /" || true
 done
