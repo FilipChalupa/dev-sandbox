@@ -1,3 +1,6 @@
+import { createContext, useContext } from 'react'
+
+export type Dictionary = typeof cs
 const cs = {
 	title: 'Sandboxy',
 	newSandbox: 'Nový sandbox',
@@ -44,8 +47,9 @@ const cs = {
 	noRemote: 'bez git repozitáře',
 	folder: 'složka',
 	close: 'Zavřít',
+	language: 'Jazyk',
 }
-const en: typeof cs = {
+const en: Dictionary = {
 	title: 'Sandboxes',
 	newSandbox: 'New sandbox',
 	name: 'Name',
@@ -91,7 +95,43 @@ const en: typeof cs = {
 	noRemote: 'no git repository',
 	folder: 'folder',
 	close: 'Close',
+	language: 'Language',
 }
-const lang = navigator.language.toLowerCase().startsWith('cs') ? cs : en
-export const t = (key: keyof typeof cs, vars: Record<string, string | number> = {}) =>
-	lang[key].replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ''))
+
+// Add a language: a new dictionary above and one line here.
+export const languages: Record<string, { name: string; dict: Dictionary }> = {
+	en: { name: 'English', dict: en },
+	cs: { name: 'Čeština', dict: cs },
+}
+export type Lang = keyof typeof languages
+
+const STORAGE_KEY = 'sandbox-manager.lang'
+
+export function detectLang(): Lang {
+	try {
+		const saved = localStorage.getItem(STORAGE_KEY)
+		if (saved && saved in languages) return saved
+	} catch {}
+	const wanted = navigator.languages ?? [navigator.language]
+	for (const l of wanted) {
+		const short = l.toLowerCase().split('-')[0]
+		if (short in languages) return short
+	}
+	return 'en'
+}
+
+export function saveLang(lang: Lang) {
+	try {
+		localStorage.setItem(STORAGE_KEY, lang)
+	} catch {}
+}
+
+export const LangContext = createContext<Lang>('en')
+
+export type Translate = (key: keyof Dictionary, vars?: Record<string, string | number>) => string
+
+export function useT(): Translate {
+	const lang = useContext(LangContext)
+	const dict = languages[lang]?.dict ?? en
+	return (key, vars = {}) => dict[key].replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ''))
+}

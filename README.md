@@ -41,6 +41,12 @@ Code admin settings.
 - `installer/` – the one-shot installer for the colleague's machine.
 - `docs/` – design notes.
 
+## Languages
+
+The manager UI is in English and Czech, chosen from the browser language and
+switchable in the header. Adding a language is one dictionary in
+`manager/web/i18n.ts` plus one line in its `languages` table.
+
 ## Development
 
 ```sh

@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { createRoot } from 'react-dom/client'
 import { api, type Sandbox } from './api'
-import { t } from './i18n'
+import { LangContext, detectLang, languages, saveLang, useT, type Lang } from './i18n'
 import { Terminal } from './Terminal'
 import './style.css'
 
@@ -24,7 +24,24 @@ function useSandboxes() {
 	return { list, error, refresh, setError }
 }
 
-function App() {
+function Root() {
+	const [lang, setLang] = useState<Lang>(detectLang)
+	useEffect(() => {
+		document.documentElement.lang = lang
+	}, [lang])
+	const choose = (l: Lang) => {
+		saveLang(l)
+		setLang(l)
+	}
+	return (
+		<LangContext.Provider value={lang}>
+			<App lang={lang} onLang={choose} />
+		</LangContext.Provider>
+	)
+}
+
+function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
+	const t = useT()
 	const { list, error, refresh, setError } = useSandboxes()
 	const [creating, setCreating] = useState(false)
 	const [editing, setEditing] = useState<Sandbox | null>(null)
@@ -56,6 +73,11 @@ function App() {
 			<header>
 				<h1>{t('title')}</h1>
 				<div className="actions">
+					<select className="lang" aria-label={t('language')} value={lang} onChange={(e) => onLang(e.target.value)}>
+						{Object.entries(languages).map(([code, l]) => (
+							<option key={code} value={code}>{l.name}</option>
+						))}
+					</select>
 					<button onClick={updateImage}>{t('update')}</button>
 					<button className="primary" onClick={() => setCreating(true)}>{t('newSandbox')}</button>
 				</div>
@@ -128,6 +150,7 @@ function SandboxCard(props: {
 	onTerminal: (cmd: 'shell' | 'login' | 'claude') => void
 	onLogs: () => void
 }) {
+	const t = useT()
 	const { s } = props
 	const running = s.container.running
 	const st = s.status
@@ -190,6 +213,7 @@ function SandboxCard(props: {
 }
 
 function SandboxForm({ existing, onSubmit, onCancel }: { existing?: Sandbox; onSubmit: (body: object) => Promise<void>; onCancel: () => void }) {
+	const t = useT()
 	const [name, setName] = useState(existing?.name ?? '')
 	const [repoUrl, setRepoUrl] = useState(existing?.repoUrl ?? '')
 	const [token, setToken] = useState('')
@@ -238,4 +262,4 @@ function SandboxForm({ existing, onSubmit, onCancel }: { existing?: Sandbox; onS
 	)
 }
 
-createRoot(document.getElementById('root')!).render(<App />)
+createRoot(document.getElementById('root')!).render(<Root />)
