@@ -55,7 +55,7 @@ export const api = {
 		code: (name: string, code: string) => call<LoginState>('POST', `/api/sandboxes/${name}/login/code`, { code }),
 		cancel: (name: string) => call<unknown>('DELETE', `/api/sandboxes/${name}/login`),
 	},
-	info: () => call<{ image: string; hostDir: string; lanHost: string; manager: { version: string; build: string } }>('GET', '/api/info'),
+	info: () => call<{ image: string; hostDir: string; lanHost: string; lanHosts: { host: string; label: string }[]; manager: { version: string; build: string } }>('GET', '/api/info'),
 	updates: () => call<{ sandbox: UpdateCheck; manager: UpdateCheck | null }>('GET', '/api/updates'),
 	diagnostics: () => call<any>('GET', '/api/diagnostics'),
 }

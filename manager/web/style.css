@@ -8,6 +8,7 @@ header h1 { margin: 0; font-size: 22px; flex: 1; }
 h2 { font-size: 17px; margin: 0; }
 button, .button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--text); padding: 6px 12px; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-block; }
 button.primary, .button.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+select.lang.small { font-size: 12px; padding: 2px 6px; margin-left: 8px; }
 select.lang { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--text); padding: 6px 8px; border-radius: 8px; }
 button.link { border: none; background: none; color: var(--muted); padding: 4px 6px; }
 button.link.danger { color: var(--danger); }

@@ -61,11 +61,25 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 	const [modal, setModal] = useState<Modal | null>(null)
 	const [note, setNote] = useState('')
 	const [, setBusy] = useLocalLoading()
-	const [lanHost, setLanHost] = useState('')
+	const [lanHosts, setLanHosts] = useState<{ host: string; label: string }[]>([])
+	const [lanChoice, setLanChoice] = useState(() => {
+		try {
+			return localStorage.getItem('sandbox-manager.lanHost') ?? ''
+		} catch {
+			return ''
+		}
+	})
+	const lanHost = lanHosts.find((h) => h.host === lanChoice)?.host ?? lanHosts[0]?.host ?? ''
+	const chooseLan = (host: string) => {
+		setLanChoice(host)
+		try {
+			localStorage.setItem('sandbox-manager.lanHost', host)
+		} catch {}
+	}
 	const [updates, setUpdates] = useState<{ sandbox: UpdateCheck; manager: UpdateCheck | null } | null>(null)
 	useEffect(() => {
 		const load = () => {
-			api.info().then((i) => setLanHost(i.lanHost)).catch(() => {})
+			api.info().then((i) => setLanHosts(i.lanHosts ?? [])).catch(() => {})
 			api.updates().then(setUpdates).catch(() => {})
 		}
 		load()
@@ -151,7 +165,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 			) : (
 				<ul className="cards">
 					{list.map((s) => (
-						<SandboxCard key={s.name} s={s} lanHost={lanHost} run={run} setModal={setModal} setError={setError} />
+						<SandboxCard key={s.name} s={s} lanHost={lanHost} lanHosts={lanHosts} onLanHost={chooseLan} run={run} setModal={setModal} setError={setError} />
 					))}
 				</ul>
 			)}
@@ -211,9 +225,11 @@ function Copy({ text }: { text: string }) {
 	)
 }
 
-function SandboxCard({ s, lanHost, run, setModal, setError }: {
+function SandboxCard({ s, lanHost, lanHosts, onLanHost, run, setModal, setError }: {
 	s: Sandbox
 	lanHost: string
+	lanHosts: { host: string; label: string }[]
+	onLanHost: (host: string) => void
 	run: (fn: () => Promise<unknown>) => Promise<void>
 	setModal: (m: Modal) => void
 	setError: (e: string) => void
@@ -309,6 +325,11 @@ function SandboxCard({ s, lanHost, run, setModal, setError }: {
 							<Qr text={withAuth(`http://${lanHost}:${s.lanPort}/`, st.preview.user, st.preview.password)} />
 							<div>
 								{t('lanUrl')}: <a href={`http://${lanHost}:${s.lanPort}/`} target="_blank" rel="noreferrer">http://{lanHost}:{s.lanPort}/</a>
+								{lanHosts.length > 1 && (
+									<select className="lang small" value={lanHost} onChange={(e) => onLanHost(e.target.value)} aria-label={t('lanIp')}>
+										{lanHosts.map((h) => <option key={h.host} value={h.host}>{h.label === h.host ? h.host : `${h.label} (${h.host})`}</option>)}
+									</select>
+								)}
 								<br />
 								{st.preview.user} / {t('password')}: <code>{st.preview.password}</code>
 							</div>

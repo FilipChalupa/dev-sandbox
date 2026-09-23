@@ -9,7 +9,7 @@ import * as dk from './docker.js'
 import * as store from './store.js'
 import * as login from './login.js'
 import * as registry from './registry.js'
-import { hostInfo } from './host.js'
+import { hostInfo, lanHosts } from './host.js'
 import fs from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
 
@@ -180,8 +180,8 @@ app.post('/api/update', async () => {
 })
 
 app.get('/api/info', async () => {
-	const host = await hostInfo()
-	return json({ image: config.image, hostDir: config.hostDir, lanHost: host.lanIp || host.hostName, manager: managerVersion })
+	const hosts = await lanHosts()
+	return json({ image: config.image, hostDir: config.hostDir, lanHosts: hosts, lanHost: hosts[0]?.host ?? '', manager: managerVersion })
 })
 
 app.get('/api/updates', async () => {

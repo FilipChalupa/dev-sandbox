@@ -32,14 +32,31 @@ if [ "$(uname)" = "Darwin" ]; then
 	mkdir -p "$DIR/.manager/bin" "$HOME/Library/LaunchAgents"
 	cat > "$DIR/.manager/bin/host-info.sh" <<'SH'
 #!/bin/bash
-# Writes the Mac's current LAN address for the sandbox manager.
+# Writes the Mac's addresses on the local network for the sandbox manager.
+# Lists every physical interface (Wi-Fi, Ethernet, …) that has a usable
+# private IPv4, skipping tunnels (VPN, WireGuard, Tailscale), link-local and
+# Docker's own range. The manager lets the person pick when there are several.
 dir="$(cd "$(dirname "$0")/.." && pwd)"
-ip=""
-for iface in $(route -n get default 2>/dev/null | awk '/interface:/ {print $2}') en0 en1; do
-	ip="$(ipconfig getifaddr "$iface" 2>/dev/null)" && [ -n "$ip" ] && break
+default_if="$(route -n get default 2>/dev/null | awk '/interface:/ {print $2}')"
+names="$(networksetup -listallhardwareports 2>/dev/null)"
+name_of() {
+	printf '%s\n' "$names" | awk -v dev="$1" '/^Hardware Port:/ {p=$0; sub(/^Hardware Port: /, "", p)} /^Device:/ && $2 == dev {print p}'
+}
+entries=""
+for iface in $(ifconfig -l 2>/dev/null); do
+	case "$iface" in lo*|utun*|tun*|tap*|wg*|ipsec*|bridge*|vmnet*|docker*|awdl*|llw*|gif*|stf*|ap*|anpi*|feth*) continue ;; esac
+	ip="$(ipconfig getifaddr "$iface" 2>/dev/null)" || continue
+	[ -n "$ip" ] || continue
+	case "$ip" in 169.254.*|192.168.65.*|127.*) continue ;; esac
+	case "$ip" in 100.*) o="${ip#100.}"; o="${o%%.*}"; [ "$o" -ge 64 ] && [ "$o" -le 127 ] && continue ;; esac
+	label="$(name_of "$iface")"; [ -n "$label" ] || label="$iface"
+	rank=2; [ "$iface" = "$default_if" ] && rank=0; case "$label" in Wi-Fi|Ethernet*|*LAN*) [ $rank = 2 ] && rank=1 ;; esac
+	entries="$entries$rank|$iface|$label|$ip\n"
 done
+json="$(printf "$entries" | sort | awk -F'|' 'NF==4 {printf "%s{\"iface\":\"%s\",\"label\":\"%s\",\"ip\":\"%s\"}", (n++ ? "," : ""), $2, $3, $4}')"
+first="$(printf "$entries" | sort | head -n 1 | cut -d'|' -f4)"
 name="$(scutil --get LocalHostName 2>/dev/null || hostname -s).local"
-printf '{"lanIp":"%s","hostName":"%s","updatedAt":"%s"}\n' "$ip" "$name" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$dir/host.json.tmp" \
+printf '{"lanIp":"%s","lanIps":[%s],"hostName":"%s","updatedAt":"%s"}\n' "$first" "$json" "$name" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$dir/host.json.tmp" \
 	&& mv "$dir/host.json.tmp" "$dir/host.json"
 SH
 	chmod +x "$DIR/.manager/bin/host-info.sh"
