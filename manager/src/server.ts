@@ -116,6 +116,33 @@ app.delete('/api/sandboxes/:name', async (c) => {
 
 app.get('/api/sandboxes/:name/logs', async (c) => c.text(await dk.logs(c.req.param('name'))))
 
+// Output of the project's dev server (written by sandbox-dev-start).
+app.get('/api/sandboxes/:name/dev-log', async (c) => {
+	try {
+		const text = await fs.readFile(path.join(config.dataDir, '.manager', c.req.param('name'), 'dev.log'), 'utf8')
+		return c.text(text.split('\n').slice(-300).join('\n'))
+	} catch {
+		return c.text('')
+	}
+})
+
+// CPU and memory for every running sandbox.
+app.get('/api/stats', async () => {
+	const out: Record<string, unknown> = {}
+	for (const s of await store.readAll()) {
+		if ((await dk.containerState(s.name)).running) out[s.name] = await dk.stats(s.name)
+	}
+	return json(out)
+})
+
+app.post('/api/prune', async () => {
+	try {
+		return json(await dk.pruneImages())
+	} catch (e) {
+		return fail(e)
+	}
+})
+
 app.post('/api/sandboxes/:name/share', action(['sandbox-share']))
 app.post('/api/sandboxes/:name/unshare', action(['sandbox-unshare']))
 app.post('/api/sandboxes/:name/save', async (c) => {
@@ -222,6 +249,7 @@ app.post('/api/update', async () => {
 			if (ev?.id && /Pull complete|Already exists/.test(ev.status ?? '')) updateJob.layers[ev.id] = { current: 1, total: 1 }
 		})
 			.then(() => registry.forget(config.image))
+			.then(() => dk.pruneImages().catch(() => null))
 			.catch((e) => (updateJob.error = e instanceof Error ? e.message : String(e)))
 			.finally(() => Object.assign(updateJob, { running: false, done: true }))
 	}
@@ -264,7 +292,9 @@ app.get('/api/diagnostics', async () => {
 		if (c.running) claudeVersion = (await dk.run(s.name, ['claude', '--version'], 15_000).catch(() => ({ output: '' }))).output
 		list.push({ name: s.name, container: c, startedAt: c.running ? new Date(await dk.startedAt(s.name)).toISOString() : '', lastActivity: st?.lastActivity ?? '', loggedIn: st?.claude?.loggedIn ?? null, claudeVersion, image: c.image })
 	}
-	return json({ manager: managerVersion, docker, host, disk, dataDir: config.dataDir, hostDir: config.hostDir, image: config.image, sandboxes: list })
+	const limitsGb = sandboxes.reduce((a, s) => a + s.memoryGb, 0)
+	const runningLimitsGb = list.filter((l) => l.container.running).reduce((a, l) => a + (sandboxes.find((s) => s.name === l.name)?.memoryGb ?? 0), 0)
+	return json({ manager: managerVersion, docker, host, disk, dataDir: config.dataDir, hostDir: config.hostDir, image: config.image, sandboxes: list, memory: { limitsGb, runningLimitsGb } })
 })
 
 // Browser terminal: ?cmd=shell | login | claude

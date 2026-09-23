@@ -103,6 +103,12 @@ UI:
 - "Send to developer" runs the project's `lint` and `typecheck` scripts
   first; on failure the commit stays local and the UI offers "send anyway",
 - log out of Claude for all sandboxes,
+- "start right after creating" in the new sandbox form, starter prompts on a
+  sandbox that has never been used, the dev server's own log,
+- CPU and memory per running sandbox, a warning in diagnostics when the sum
+  of sandbox memory limits exceeds Docker's memory,
+- cleanup of old images of ours that no container uses (also runs after each
+  successful update),
 - English and Czech, switchable.
 
 ### Sandbox container

@@ -65,6 +65,6 @@ jq -n \
 		git: { branch: $branch, remote: $remote, dirty: $dirty, ahead: $ahead, lastCommit: $last, today: $today, changed: $changed, shortstat: $shortstat },
 		claude: { loggedIn: $loggedIn, email: $email, serverRunning: $running, supervisorRunning: $tmuxUp, sessionUrl: $session },
 		preview: { url: $preview, upstreamPort: ($port | tonumber), devServerUp: $devUp, proxyUp: $caddyUp, tunnelUrl: $tunnel, user: $user, password: $pw },
-		lastActivity: ($lastActivity | todate),
+		lastActivity: (if $lastActivity > 0 then ($lastActivity | todate) else "" end),
 		updatedAt: (now | todate)
 	}'

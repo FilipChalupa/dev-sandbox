@@ -59,6 +59,9 @@ export const api = {
 	save: (name: string, force: boolean) => call<{ ok: boolean; checksFailed?: boolean; output: string }>('POST', `/api/sandboxes/${name}/save?force=${force ? 1 : 0}`),
 	checkRepo: (body: { repoUrl: string; token: string; username?: string }) => call<{ ok: boolean; branches: string[]; error: string }>('POST', '/api/check-repo', body),
 	logoutClaude: () => call<{ ok: boolean }>('POST', '/api/claude/logout'),
+	devLog: (name: string) => fetch(`/api/sandboxes/${name}/dev-log`).then((r) => r.text()),
+	stats: () => call<Record<string, { cpuPercent: number; memMb: number; memLimitMb: number } | null>>('GET', '/api/stats'),
+	prune: () => call<{ removed: number; freedMb: number }>('POST', '/api/prune'),
 	login: {
 		status: (name: string) => call<LoginState | null>('GET', `/api/sandboxes/${name}/login`),
 		start: (name: string) => call<LoginState>('POST', `/api/sandboxes/${name}/login`),

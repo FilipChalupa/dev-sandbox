@@ -41,6 +41,7 @@ type Modal =
 	| { kind: 'qr'; text: string; title: string }
 	| { kind: 'logout' }
 	| { kind: 'sendAnyway'; name: string; output: string }
+	| { kind: 'devlog'; name: string }
 
 // Which of the three steps a sandbox is on, and whether the person has to act.
 function stageOf(s: Sandbox) {
@@ -97,6 +98,13 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 	}
 	const [updates, setUpdates] = useState<{ sandbox: UpdateCheck; manager: UpdateCheck | null } | null>(null)
 	const [progress, setProgress] = useState<UpdateProgress | null>(null)
+	const [stats, setStats] = useState<Record<string, { cpuPercent: number; memMb: number; memLimitMb: number } | null>>({})
+	useEffect(() => {
+		const load = () => api.stats().then(setStats).catch(() => {})
+		load()
+		const id = setInterval(load, 5000)
+		return () => clearInterval(id)
+	}, [])
 	const close = () => setModal(null)
 
 	useEffect(() => {
@@ -197,6 +205,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 							{ label: t('update'), icon: 'refresh', onClick: updateImage, badge: updates?.sandbox.updateAvailable },
 							{ label: t('updateManager'), icon: 'restart', onClick: updateManager, badge: updates?.manager?.updateAvailable },
 							{ label: t('diagnostics'), icon: 'stethoscope', onClick: () => setModal({ kind: 'diagnostics' }) },
+							{ label: t('prune'), icon: 'trash', onClick: () => run(async () => { const r = await api.prune(); toast('ok', r.removed ? t('pruned', { mb: r.freedMb, n: r.removed }) : t('prunedNothing')) }) },
 							'sep',
 							{ label: t('logoutClaude'), icon: 'login', danger: true, onClick: () => setModal({ kind: 'logout' }) },
 							'sep',
@@ -234,13 +243,24 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 			) : (
 				<ul className="cards">
 					{sorted.map((s) => (
-						<SandboxCard key={s.name} s={s} lang={lang} lanHost={lanHost} lanHosts={lanHosts} onLanHost={chooseLan} run={run} setModal={setModal} />
+						<SandboxCard key={s.name} s={s} usage={stats[s.name] ?? null} lang={lang} lanHost={lanHost} lanHosts={lanHosts} onLanHost={chooseLan} run={run} setModal={setModal} />
 					))}
 				</ul>
 			)}
 
 			{modal?.kind === 'create' && (
-				<SandboxForm initial={modal.initial} onCancel={close} onSubmit={async (body) => { await run(() => api.create(body)); close() }} />
+				<SandboxForm
+					initial={modal.initial}
+					onCancel={close}
+					onSubmit={async (body) => {
+						const { startNow, ...rest } = body as { startNow?: boolean; name: string }
+						await run(async () => {
+							const created = await api.create(rest)
+							if (startNow) await api.start(created.name)
+						})
+						close()
+					}}
+				/>
 			)}
 			{modal?.kind === 'edit' && (
 				<SandboxForm existing={modal.s} onCancel={close} onSubmit={async (body) => { await run(() => api.update(modal.s.name, body), t('sent')); close() }} />
@@ -264,6 +284,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 					<div className="access-row"><span className="k" /><code className="v">{modal.text}</code><Copy text={modal.text} /></div>
 				</Modal>
 			)}
+			{modal?.kind === 'devlog' && <DevLog name={modal.name} onClose={close} />}
 			{modal?.kind === 'logout' && (
 				<Modal title={<><Icon name="login" /> {t('logoutClaude')}</>} onClose={close}>
 					<p>{t('logoutConfirm')}</p>
@@ -361,6 +382,43 @@ function Access({ title, icon, url, user, password, extra, onQr }: { title: stri
 	)
 }
 
+function Prompts() {
+	const t = useT()
+	const { toast } = useToast()
+	const copy = async (text: string) => {
+		try {
+			await navigator.clipboard.writeText(text)
+			toast('ok', t('copied'))
+		} catch {}
+	}
+	return (
+		<div className="prompts">
+			<div className="prompts-title"><Icon name="bolt" /> {t('promptsTitle')} <span className="muted small">{t('promptsHint')}</span></div>
+			<div className="prompts-list">
+				{(['prompt1', 'prompt2', 'prompt3', 'prompt4', 'prompt5'] as const).map((k) => (
+					<button key={k} className="prompt" onClick={() => copy(t(k))} title={t('copy')}>„{t(k)}“</button>
+				))}
+			</div>
+		</div>
+	)
+}
+
+function DevLog({ name, onClose }: { name: string; onClose: () => void }) {
+	const t = useT()
+	const [text, setText] = useState<string | null>(null)
+	useEffect(() => {
+		const load = () => api.devLog(name).then(setText).catch(() => setText(''))
+		load()
+		const id = setInterval(load, 2000)
+		return () => clearInterval(id)
+	}, [name])
+	return (
+		<Modal title={<><Icon name="log" /> {t('devLog')}: {name}</>} onClose={onClose} wide>
+			{text === null ? <p>{t('loading')}</p> : text.trim() ? <pre className="logs">{text}</pre> : <p className="muted">{t('devLogEmpty')}</p>}
+		</Modal>
+	)
+}
+
 function Welcome({ onCreate }: { onCreate: () => void }) {
 	const t = useT()
 	return (
@@ -381,8 +439,9 @@ function Welcome({ onCreate }: { onCreate: () => void }) {
 
 // ---------------------------------------------------------------- card
 
-function SandboxCard({ s, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
+function SandboxCard({ s, usage, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
 	s: Sandbox
+	usage: { cpuPercent: number; memMb: number; memLimitMb: number } | null
 	lang: string
 	lanHost: string
 	lanHosts: { host: string; label: string }[]
@@ -463,6 +522,7 @@ function SandboxCard({ s, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
 		{ label: t('edit'), icon: 'settings', onClick: () => setModal({ kind: 'edit', s }) },
 		{ label: t('changesToday'), icon: 'history', onClick: () => setModal({ kind: 'changes', name: s.name }), disabled: !running },
 		{ label: t('devStop'), icon: 'stop', onClick: () => action('dev-stop'), disabled: !(running && st?.preview.devServerUp) },
+		{ label: t('devLog'), icon: 'log', onClick: () => setModal({ kind: 'devlog', name: s.name }), disabled: !running },
 		'sep' as const,
 		{ label: t('terminal'), icon: 'terminal', onClick: () => setModal({ kind: 'terminal', name: s.name, cmd: 'shell' }), disabled: !running },
 		{ label: t('restartClaude'), icon: 'restart', onClick: () => action('restart-claude'), disabled: !running },
@@ -485,7 +545,7 @@ function SandboxCard({ s, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
 					) : busy === 'dev' || pending ? (
 						<Pill tone="work"><Spinner /> {t('devStarting')}</Pill>
 					) : (
-						<Pill tone="off">{t('devServerDown')} · <button className="pill-link" onClick={() => action('dev-start')}>{t('devStart')}</button></Pill>
+						<Pill tone="off">{t('devServerDown')} · <button className="pill-link" onClick={() => action('dev-start')}>{t('devStart')}</button> · <button className="pill-link" onClick={() => setModal({ kind: 'devlog', name: s.name })}>log</button></Pill>
 					)
 				)}
 				{running && st && !st.claude.serverRunning && stage.step === 3 && <Pill tone="error">{t('claudeOffline')}</Pill>}
@@ -502,6 +562,7 @@ function SandboxCard({ s, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
 						<span><Icon name="git" size={13} /> {s.repoUrl ? s.repoUrl.replace(/^https?:\/\//, '') : t('noRemote')}</span>
 						<span>{t('branch')}: <code>{st?.git.branch || s.branch}</code></span>
 						<span><Icon name="folder" size={13} /> ~/Sandboxes/{s.name}</span>
+						{running && usage && <span title={t('memoryLimits')}>{t('usage', { cpu: usage.cpuPercent, mem: (usage.memMb / 1024).toFixed(1), limit: (usage.memLimitMb / 1024).toFixed(0) })}</span>}
 					</div>
 
 					{!running && s.failure && (
@@ -548,6 +609,7 @@ function SandboxCard({ s, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
 									)}
 								/>
 							)}
+							{!st.lastActivity && <Prompts />}
 							<div className="git">
 								{st.git.dirty > 0 && <span className="warn-text">{t('uncommitted', { n: st.git.dirty })}</span>}
 								{st.git.ahead > 0 && <span className="warn-text">{t('unpushed', { n: st.git.ahead })}</span>}
@@ -728,6 +790,9 @@ function Diagnostics({ lang, onClose }: { lang: string; onClose: () => void }) {
 							</dl>
 						)}
 					</section>
+					{d.memory && d.docker.docker && d.memory.limitsGb > d.docker.docker.memoryGb && (
+						<p className="failure"><Icon name="alert" /> {t('memoryWarning', { limits: d.memory.limitsGb, total: d.docker.docker.memoryGb })}</p>
+					)}
 					<section>
 						<h3>{t('diagHost')}</h3>
 						<dl>
@@ -798,6 +863,7 @@ function SandboxForm({ existing, initial, onSubmit, onCancel }: { existing?: San
 	const [idleStopHours, setIdleStopHours] = useState(existing?.idleStopHours ?? 4)
 	const [lanPreview, setLanPreview] = useState(existing?.lanPreview ?? false)
 	const [instructions, setInstructions] = useState(existing?.instructions ?? initial?.instructions ?? '')
+	const [startNow, setStartNow] = useState(true)
 	const [busy, setBusy] = useLocalLoading()
 	const [check, setCheck] = useState<{ state: 'idle' | 'busy' | 'ok' | 'fail'; branches: string[]; error: string }>({ state: 'idle', branches: [], error: '' })
 	const doCheck = async () => {
@@ -825,7 +891,10 @@ function SandboxForm({ existing, initial, onSubmit, onCancel }: { existing?: San
 		e.preventDefault()
 		setBusy(true)
 		const body: Record<string, unknown> = { repoUrl, branch: branch || undefined, autostart, memoryGb, cpus, idleStopHours, lanPreview, instructions }
-		if (!existing) body.name = name
+		if (!existing) {
+			body.name = name
+			body.startNow = startNow
+		}
 		if (token) body.token = token
 		await onSubmit(body)
 		setBusy(false)
@@ -868,6 +937,11 @@ function SandboxForm({ existing, initial, onSubmit, onCancel }: { existing?: San
 					<textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} rows={3} />
 					<small>{t('instructionsHint')}</small>
 				</label>
+				{!existing && (
+					<label className="check">
+						<input type="checkbox" checked={startNow} onChange={(e) => setStartNow(e.target.checked)} /> {t('startNow')}
+					</label>
+				)}
 				<label className="check">
 					<input type="checkbox" checked={autostart} onChange={(e) => setAutostart(e.target.checked)} /> {t('autostart')}
 				</label>

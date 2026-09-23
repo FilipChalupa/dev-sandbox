@@ -266,6 +266,50 @@ export async function diagnostics() {
 	}
 }
 
+// CPU and memory of a running sandbox, from one stats sample.
+export async function stats(name: string) {
+	try {
+		const st: any = await docker.getContainer(containerName(name)).stats({ stream: false })
+		const cpuDelta = st.cpu_stats.cpu_usage.total_usage - st.precpu_stats.cpu_usage.total_usage
+		const sysDelta = st.cpu_stats.system_cpu_usage - st.precpu_stats.system_cpu_usage
+		const cores = st.cpu_stats.online_cpus || st.cpu_stats.cpu_usage.percpu_usage?.length || 1
+		const cpuPercent = sysDelta > 0 ? (cpuDelta / sysDelta) * cores * 100 : 0
+		const cache = st.memory_stats.stats?.inactive_file ?? st.memory_stats.stats?.cache ?? 0
+		return { cpuPercent: Math.round(cpuPercent), memMb: Math.round((st.memory_stats.usage - cache) / 1024 ** 2), memLimitMb: Math.round(st.memory_stats.limit / 1024 ** 2) }
+	} catch {
+		return null
+	}
+}
+
+// Remove images of ours that no container uses any more (old versions kept
+// after updates). Returns the bytes freed.
+export async function pruneImages() {
+	const repos = new Set<string>()
+	for (const img of [config.image, await selfImage()]) {
+		if (img.includes('/')) repos.add(img.split('@')[0].replace(/:[^/]+$/, ''))
+	}
+	const inUse = new Set((await docker.listContainers({ all: true })).map((c) => c.ImageID))
+	const current = new Set<string>()
+	for (const img of [config.image, await selfImage()]) {
+		try {
+			current.add((await docker.getImage(img).inspect()).Id)
+		} catch {}
+	}
+	let freed = 0
+	let removed = 0
+	for (const img of await docker.listImages({ all: false })) {
+		const ours = (img.RepoTags ?? []).some((t) => [...repos].some((r) => t.startsWith(r + ':')))
+			|| (img.RepoDigests ?? []).some((d) => [...repos].some((r) => d.startsWith(r + '@')))
+		if (!ours || inUse.has(img.Id) || current.has(img.Id)) continue
+		try {
+			await docker.getImage(img.Id).remove({ force: true })
+			freed += img.Size
+			removed++
+		} catch {}
+	}
+	return { removed, freedMb: Math.round(freed / 1024 ** 2) }
+}
+
 // Interactive exec for the browser terminal.
 export async function exec(name: string, cmd: string[], cols: number, rows: number) {
 	const container = docker.getContainer(containerName(name))
