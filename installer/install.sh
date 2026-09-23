@@ -24,6 +24,13 @@ fi
 
 mkdir -p "$DIR/.manager"
 
+# The machine's name on the local network, for the phone preview links.
+if [ "$(uname)" = "Darwin" ]; then
+	LAN_NAME="$(scutil --get LocalHostName 2>/dev/null || hostname -s).local"
+else
+	LAN_NAME="$(hostname -s).local"
+fi
+
 say "Downloading the manager and the sandbox image (this can take a few minutes the first time)…"
 docker pull "$MANAGER_IMAGE"
 docker pull "$SANDBOX_IMAGE"
@@ -38,6 +45,7 @@ docker run -d \
 	-v "$DIR:/sandboxes" \
 	-e "SANDBOXES_HOST_DIR=$DIR" \
 	-e "SANDBOX_IMAGE=$SANDBOX_IMAGE" \
+	-e "HOST_LAN_NAME=$LAN_NAME" \
 	"$MANAGER_IMAGE" >/dev/null
 
 for _ in $(seq 1 30); do

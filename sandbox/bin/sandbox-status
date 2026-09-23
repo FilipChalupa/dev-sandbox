@@ -10,7 +10,7 @@ logged_in="$(printf '%s' "$auth" | jq -r 'if .loggedIn == true then "true" else 
 email="$(printf '%s' "$auth" | jq -r '.email // empty')"
 if pgrep -f 'claude remote-control' >/dev/null 2>&1; then running=true; else running=false; fi
 if [ -d .git ]; then
-	dirty="$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+	dirty="$(git --no-optional-locks status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
 	branch="$(git branch --show-current 2>/dev/null)"
 	ahead="$(git rev-list '@{u}..HEAD' 2>/dev/null | wc -l | tr -d ' ')"
 	last="$(git log -1 --format='%h %s' 2>/dev/null)"
@@ -21,6 +21,14 @@ fi
 if tunnel_running; then tunnel="$(tunnel_url)"; else tunnel=""; fi
 if grep -qx "$(upstream_port)" <<<"$(sandbox-ports)"; then dev_up=true; else dev_up=false; fi
 if tmux has-session -t claude 2>/dev/null; then tmux_up=true; else tmux_up=false; fi
+# Activity: the Claude pane changes while sessions work; the workspace index
+# changes when files are committed; upstream-port changes when servers start.
+last=0
+for f in "$(state_file claude.log)" "$SANDBOX_WORKSPACE/.git/index" "$(state_file upstream-port)" "$(state_file tunnel-url)"; do
+	[ -e "$f" ] || continue
+	m="$(stat -c %Y "$f" 2>/dev/null || echo 0)"
+	[ "$m" -gt "$last" ] && last="$m"
+done
 
 jq -n \
 	--arg name "$SANDBOX_NAME" \
@@ -37,6 +45,7 @@ jq -n \
 	--argjson running "$running" \
 	--argjson devUp "$dev_up" \
 	--argjson tmuxUp "$tmux_up" \
+	--argjson lastActivity "$last" \
 	--argjson dirty "${dirty:-0}" \
 	--argjson ahead "${ahead:-0}" \
 	--arg last "$last" \
@@ -45,5 +54,6 @@ jq -n \
 		git: { branch: $branch, remote: $remote, dirty: $dirty, ahead: $ahead, lastCommit: $last },
 		claude: { loggedIn: $loggedIn, email: $email, serverRunning: $running, supervisorRunning: $tmuxUp, sessionUrl: $session },
 		preview: { url: $preview, upstreamPort: ($port | tonumber), devServerUp: $devUp, tunnelUrl: $tunnel, user: $user, password: $pw },
+		lastActivity: ($lastActivity | todate),
 		updatedAt: (now | todate)
 	}'

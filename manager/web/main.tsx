@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { api, type LoginState, type Sandbox } from './api'
 import { LangContext, detectLang, languages, saveLang, useT, type Lang } from './i18n'
 import { Terminal } from './Terminal'
+import QRCode from 'qrcode'
 import './style.css'
 
 function useSandboxes() {
@@ -53,6 +54,10 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 	const { list, error, refresh, setError } = useSandboxes()
 	const [modal, setModal] = useState<Modal | null>(null)
 	const [note, setNote] = useState('')
+	const [lanHost, setLanHost] = useState('')
+	useEffect(() => {
+		api.info().then((i) => setLanHost(i.lanHost)).catch(() => {})
+	}, [])
 	const close = () => setModal(null)
 
 	const run = async (fn: () => Promise<unknown>) => {
@@ -116,7 +121,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 			) : (
 				<ul className="cards">
 					{list.map((s) => (
-						<SandboxCard key={s.name} s={s} run={run} setModal={setModal} setError={setError} />
+						<SandboxCard key={s.name} s={s} lanHost={lanHost} run={run} setModal={setModal} setError={setError} />
 					))}
 				</ul>
 			)}
@@ -143,6 +148,18 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 	)
 }
 
+function Qr({ text }: { text: string }) {
+	const t = useT()
+	const [src, setSrc] = useState('')
+	useEffect(() => {
+		QRCode.toDataURL(text, { margin: 1, width: 160 }).then(setSrc).catch(() => setSrc(''))
+	}, [text])
+	return src ? <img className="qr" src={src} alt={text} title={t('qrHint')} /> : null
+}
+
+// Basic auth in the URL, so a phone opens it without typing the password.
+const withAuth = (url: string, user: string, pw: string) => url.replace(/^(https?:\/\/)/, `$1${encodeURIComponent(user)}:${encodeURIComponent(pw)}@`)
+
 function Copy({ text }: { text: string }) {
 	const t = useT()
 	const [ok, setOk] = useState(false)
@@ -162,8 +179,9 @@ function Copy({ text }: { text: string }) {
 	)
 }
 
-function SandboxCard({ s, run, setModal, setError }: {
+function SandboxCard({ s, lanHost, run, setModal, setError }: {
 	s: Sandbox
+	lanHost: string
 	run: (fn: () => Promise<unknown>) => Promise<void>
 	setModal: (m: Modal) => void
 	setError: (e: string) => void
@@ -245,9 +263,22 @@ function SandboxCard({ s, run, setModal, setError }: {
 					</div>
 					{st.preview.tunnelUrl && (
 						<div className="shared">
-							{t('shared')}: <a href={st.preview.tunnelUrl} target="_blank" rel="noreferrer">{st.preview.tunnelUrl}</a> <Copy text={st.preview.tunnelUrl} />
-							<br />
-							{st.preview.user} / {t('password')}: <code>{st.preview.password}</code> <Copy text={st.preview.password} />
+							<Qr text={withAuth(st.preview.tunnelUrl, st.preview.user, st.preview.password)} />
+							<div>
+								{t('shared')}: <a href={st.preview.tunnelUrl} target="_blank" rel="noreferrer">{st.preview.tunnelUrl}</a> <Copy text={st.preview.tunnelUrl} />
+								<br />
+								{st.preview.user} / {t('password')}: <code>{st.preview.password}</code> <Copy text={st.preview.password} />
+							</div>
+						</div>
+					)}
+					{s.lanPreview && lanHost && (
+						<div className="shared">
+							<Qr text={withAuth(`http://${lanHost}:${s.lanPort}/`, st.preview.user, st.preview.password)} />
+							<div>
+								{t('lanUrl')}: <a href={`http://${lanHost}:${s.lanPort}/`} target="_blank" rel="noreferrer">http://{lanHost}:{s.lanPort}/</a>
+								<br />
+								{st.preview.user} / {t('password')}: <code>{st.preview.password}</code>
+							</div>
 						</div>
 					)}
 					<div className="git">
@@ -304,13 +335,20 @@ function Login({ name, loggedIn, onClose, onTerminal }: { name: string; loggedIn
 			setError(e instanceof Error ? e.message : String(e))
 		}
 	}
-	const failed = state?.done && !loggedIn
+	const success = loggedIn || Boolean(state?.success)
+	const failed = state?.done && !success
+	useEffect(() => {
+		if (state?.success && !loggedIn) {
+			const id = setTimeout(onClose, 4000)
+			return () => clearTimeout(id)
+		}
+	}, [state?.success, loggedIn])
 	return (
 		<div className="modal" onClick={onClose}>
 			<div className="modal-body" onClick={(e) => e.stopPropagation()}>
 				<h2>{t('loginTitle')}</h2>
-				{loggedIn ? (
-					<p className="ok-text">{t('loginDone')}</p>
+				{success ? (
+					<p className="ok-text">{loggedIn ? t('loginDone') : t('loginSuccess')}</p>
 				) : failed || error ? (
 					<>
 						<p className="error">{t('loginFailed')} {error}</p>
@@ -389,11 +427,15 @@ function SandboxForm({ existing, onSubmit, onCancel }: { existing?: Sandbox; onS
 	const [token, setToken] = useState('')
 	const [branch, setBranch] = useState(existing?.branch ?? '')
 	const [autostart, setAutostart] = useState(existing?.autostart ?? false)
+	const [memoryGb, setMemoryGb] = useState(existing?.memoryGb ?? 4)
+	const [cpus, setCpus] = useState(existing?.cpus ?? 2)
+	const [idleStopHours, setIdleStopHours] = useState(existing?.idleStopHours ?? 4)
+	const [lanPreview, setLanPreview] = useState(existing?.lanPreview ?? false)
 	const [busy, setBusy] = useState(false)
 	const submit = async (e: FormEvent) => {
 		e.preventDefault()
 		setBusy(true)
-		const body: Record<string, unknown> = { repoUrl, branch: branch || undefined, autostart }
+		const body: Record<string, unknown> = { repoUrl, branch: branch || undefined, autostart, memoryGb, cpus, idleStopHours, lanPreview }
 		if (!existing) body.name = name
 		if (token) body.token = token
 		await onSubmit(body)
@@ -427,6 +469,23 @@ function SandboxForm({ existing, onSubmit, onCancel }: { existing?: Sandbox; onS
 				<label className="check">
 					<input type="checkbox" checked={autostart} onChange={(e) => setAutostart(e.target.checked)} /> {t('autostart')}
 				</label>
+				<label className="check">
+					<input type="checkbox" checked={lanPreview} onChange={(e) => setLanPreview(e.target.checked)} /> {t('lanPreview')}
+				</label>
+				<div className="grid3">
+					<label>
+						{t('memory')}
+						<input type="number" min={1} step={1} value={memoryGb} onChange={(e) => setMemoryGb(Number(e.target.value))} />
+					</label>
+					<label>
+						{t('cpus')}
+						<input type="number" min={0.5} step={0.5} value={cpus} onChange={(e) => setCpus(Number(e.target.value))} />
+					</label>
+					<label>
+						{t('idleStop')}
+						<input type="number" min={0} step={1} value={idleStopHours} onChange={(e) => setIdleStopHours(Number(e.target.value))} />
+					</label>
+				</div>
 				<div className="actions">
 					<button type="button" onClick={onCancel}>{t('cancel')}</button>
 					<button type="submit" className="primary" disabled={busy}>{existing ? t('save') : t('create')}</button>

@@ -4,5 +4,5 @@ source sandbox-lib
 while true; do
 	sandbox-status > "$(state_file status.json.tmp)" 2>/dev/null \
 		&& mv "$(state_file status.json.tmp)" "$(state_file status.json)"
-	sleep 10
+	sleep 5
 done

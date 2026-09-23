@@ -25,13 +25,29 @@ const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 
 const json = (data: unknown, status = 200) => Response.json(data, { status })
 const fail = (e: unknown) => json({ error: e instanceof Error ? e.message : String(e) }, 400)
 
+// Stop sandboxes nobody has used for a while.
+async function idleSweep() {
+	for (const s of await store.readAll()) {
+		if (!s.idleStopHours) continue
+		const started = await dk.startedAt(s.name)
+		if (!started) continue
+		const st = (await store.readStatus(s.name)) as { lastActivity?: string } | null
+		const last = Math.max(started, Date.parse(st?.lastActivity ?? '') || 0)
+		if (Date.now() - last > s.idleStopHours * 3600_000) {
+			console.log(`stopping idle sandbox ${s.name}`)
+			await dk.stop(s.name).catch(() => {})
+		}
+	}
+}
+setInterval(() => idleSweep().catch(() => {}), 60_000)
+
 async function describe(s: store.SandboxConfig) {
 	const [container, status, hasToken] = await Promise.all([
 		dk.containerState(s.name),
 		store.readStatus(s.name),
 		store.hasToken(s.name),
 	])
-	return { ...s, hasToken, container, status: container.running ? status : null }
+	return { ...s, lanPort: store.lanPort(s), hasToken, container, status: container.running ? status : null }
 }
 
 app.get('/api/sandboxes', async () => json(await Promise.all((await store.readAll()).map(describe))))
@@ -155,7 +171,7 @@ app.post('/api/update', async () => {
 	}
 })
 
-app.get('/api/info', () => json({ image: config.image, hostDir: config.hostDir }))
+app.get('/api/info', () => json({ image: config.image, hostDir: config.hostDir, lanHost: config.hostLanName }))
 
 // Browser terminal: ?cmd=shell | login | claude
 app.get(

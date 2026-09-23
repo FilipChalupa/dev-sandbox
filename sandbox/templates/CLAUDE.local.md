@@ -16,6 +16,7 @@ when a request is ambiguous.
   `.env`, ask the person for them and write them there.
 - If a `git push` is rejected or a merge conflict appears, stop, do not try
   to resolve it by force, and tell the person to contact the developer.
+  (A guard in the sandbox rejects pushes to other branches and force pushes.)
 
 ## Running the project
 
@@ -33,6 +34,14 @@ when a request is ambiguous.
 - When the person wants to show the site to somebody else, run
   `sandbox-share` and give them the public URL, user name and password it
   prints. `sandbox-unshare` stops sharing. The public URL changes each time.
+
+## Seeing the result
+
+- `sandbox-screenshot` renders the preview with headless Chromium and prints
+  the path of a PNG; open that file to see what the person sees. Use
+  `sandbox-screenshot --mobile` for a phone viewport and pass a path such as
+  `/about` to render another page. Check your visual changes this way before
+  reporting them as done.
 
 ## Files the person sends you
 

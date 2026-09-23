@@ -57,6 +57,8 @@ can start sessions in it. Status for the manager is in `/state/status.json`.
 - `sandbox-share [<port>]`: start the public tunnel, print URL and credentials.
 - `sandbox-unshare`: stop the tunnel.
 - `sandbox-save [message]`: commit everything and push the working branch.
+- `sandbox-screenshot [path|url] [out.png] [--mobile]`: render the preview with
+  headless Chromium (for Claude to check its work).
 - `sandbox-status`: print the status JSON.
 - `sandbox-claude-start`: restart the Claude Remote Control server.
 - `sandbox-ports`: list the ports something listens on (the preview follows

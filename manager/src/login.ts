@@ -19,7 +19,14 @@ export function status(name: string) {
 	const s = sessions.get(name)
 	if (!s) return null
 	const tail = s.output.slice(-300)
-	return { url: s.url, done: s.done, error: s.error, invalidCode: /Invalid code/i.test(tail), output: s.output.slice(-2000) }
+	return {
+		url: s.url,
+		done: s.done,
+		success: /Login successful|Logged in as|logged in/i.test(s.output),
+		error: s.error,
+		invalidCode: /Invalid code/i.test(tail),
+		output: s.output.slice(-2000),
+	}
 }
 
 export async function start(name: string) {
@@ -43,7 +50,6 @@ export async function start(name: string) {
 			const m = flat.match(/https:\/\/[^\s"'<>]*oauth[^\s"'<>]*/)
 			if (m) s.url = m[0]
 		}
-		if (/logged in|login successful|successfully/i.test(s.output.slice(-400))) s.done = true
 	})
 	s.stream.stream.on('end', () => {
 		s.done = true

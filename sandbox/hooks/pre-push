@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Sandbox guard: only the sandbox's own working branch may be pushed, only
+# fast-forward, never deleted. Installed through core.hooksPath, so the
+# repository's own hooks do not run either.
+branch="$(cat /state/branch 2>/dev/null || echo "${SANDBOX_BRANCH:-}")"
+zero=0000000000000000000000000000000000000000
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+	[ -n "$remote_ref" ] || continue
+	if [ "$remote_ref" != "refs/heads/$branch" ]; then
+		echo "sandbox: refusing to push to '${remote_ref#refs/heads/}'. This sandbox may only push to '$branch'." >&2
+		status=1
+	elif [ "$local_sha" = "$zero" ]; then
+		echo "sandbox: refusing to delete the branch '$branch'." >&2
+		status=1
+	elif [ "$remote_sha" != "$zero" ] && ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
+		echo "sandbox: refusing a non fast-forward (force) push to '$branch'. Pull first; if there is a conflict, ask the developer." >&2
+		status=1
+	fi
+done
+exit $status

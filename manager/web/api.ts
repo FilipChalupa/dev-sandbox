@@ -5,17 +5,23 @@ export type Sandbox = {
 	hostPort: number
 	autosaveMinutes: number
 	autostart: boolean
+	memoryGb: number
+	cpus: number
+	idleStopHours: number
+	lanPreview: boolean
+	lanPort: number
 	hasToken: boolean
 	container: { exists: boolean; running: boolean; status: string; image: string }
 	status: null | {
 		git: { branch: string; remote: string; dirty: number; ahead: number; lastCommit: string }
 		claude: { loggedIn: boolean; email: string; serverRunning: boolean; supervisorRunning: boolean; sessionUrl: string }
 		preview: { url: string; upstreamPort: number; devServerUp: boolean; tunnelUrl: string; user: string; password: string }
+		lastActivity: string
 		updatedAt: string
 	}
 }
 
-export type LoginState = { url: string; done: boolean; error: string; invalidCode: boolean; output: string }
+export type LoginState = { url: string; done: boolean; success: boolean; error: string; invalidCode: boolean; output: string }
 
 async function call<T>(method: string, url: string, body?: unknown): Promise<T> {
 	const res = await fetch(url, {
@@ -47,5 +53,5 @@ export const api = {
 		code: (name: string, code: string) => call<LoginState>('POST', `/api/sandboxes/${name}/login/code`, { code }),
 		cancel: (name: string) => call<unknown>('DELETE', `/api/sandboxes/${name}/login`),
 	},
-	info: () => call<{ image: string; hostDir: string }>('GET', '/api/info'),
+	info: () => call<{ image: string; hostDir: string; lanHost: string }>('GET', '/api/info'),
 }

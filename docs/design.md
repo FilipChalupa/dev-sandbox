@@ -80,12 +80,16 @@ UI:
 - an embedded terminal (xterm.js) into the sandbox as a fallback,
 - a live log, "Update" (pulls the sandbox image) and "Update manager" (the
   manager pulls its image and a helper container swaps it out),
+- QR codes for the shared URL and, when enabled, a LAN preview link
+  (`http://<mac-name>.local:<port>`, basic auth) for a phone on the same Wi-Fi,
+- per sandbox memory and CPU limits, and an idle stop (hours without Claude
+  activity, git commits or server changes),
 - English and Czech, switchable.
 
 ### Sandbox container
 
 Image: Debian based, Node 24 (corepack/pnpm enabled) with fnm for other Node
-versions, git, ffmpeg, tmux, Caddy, cloudflared, Claude Code. Runs as an
+versions, git, ffmpeg, tmux, Caddy, cloudflared, Chromium, Claude Code. Runs as an
 unprivileged user. Empty projects get a default `.gitignore`.
 
 Processes inside:
@@ -98,6 +102,10 @@ Processes inside:
   tunnel, writes the URL to `status.json` and prints it so Claude can pass it on.
   `sandbox-unshare` stops the tunnel,
 - optional autosave loop,
+- a `pre-push` git hook (via `core.hooksPath`) that only allows fast-forward
+  pushes to the sandbox's own branch: no other branches, no force, no delete,
+- `sandbox-screenshot`: headless Chromium render of the preview (desktop or
+  phone viewport) so Claude can look at its own changes,
 - `sandbox-port-watch`: follows whatever port the dev server listens on and
   points Caddy at it, so nothing has to be configured per project,
 - `sandbox-save`: commit everything and push (used by autosave and the UI),
@@ -144,6 +152,11 @@ coming through the tunnel.
   `https://claude.ai/code?environment=env_…`.
 - Caddy's `handle_errors` must be limited to 502/503, otherwise it swallows
   the 401 challenge of basic auth.
+- Anything that polls `git status` next to Claude must use
+  `--no-optional-locks`, otherwise Claude's own git commands hit
+  `index.lock: File exists`.
+- `host.docker.internal` resolves to Docker Desktop's internal gateway, not
+  the Mac's LAN address, so LAN links use the Bonjour name instead.
 
 ## Milestones
 

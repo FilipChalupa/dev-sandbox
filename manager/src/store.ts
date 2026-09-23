@@ -9,18 +9,27 @@ export type SandboxConfig = {
 	hostPort: number
 	autosaveMinutes: number
 	autostart: boolean
+	memoryGb: number
+	cpus: number
+	idleStopHours: number
+	lanPreview: boolean
 	createdAt: string
 }
+
+export const defaults = { memoryGb: 4, cpus: 2, idleStopHours: 4, lanPreview: false }
 
 const file = () => managerDir('sandboxes.json')
 
 export async function readAll(): Promise<SandboxConfig[]> {
 	try {
-		return JSON.parse(await fs.readFile(file(), 'utf8'))
+		const list = JSON.parse(await fs.readFile(file(), 'utf8')) as Partial<SandboxConfig>[]
+		return list.map((s) => ({ ...defaults, autostart: false, ...s }) as SandboxConfig)
 	} catch {
 		return []
 	}
 }
+
+export const lanPort = (s: SandboxConfig) => s.hostPort + 10000
 
 async function writeAll(list: SandboxConfig[]) {
 	await fs.mkdir(managerDir(), { recursive: true })
@@ -43,6 +52,10 @@ export async function create(input: Partial<SandboxConfig> & { name: string; tok
 		hostPort: port,
 		autosaveMinutes: input.autosaveMinutes ?? 10,
 		autostart: input.autostart ?? false,
+		memoryGb: input.memoryGb ?? defaults.memoryGb,
+		cpus: input.cpus ?? defaults.cpus,
+		idleStopHours: input.idleStopHours ?? defaults.idleStopHours,
+		lanPreview: input.lanPreview ?? defaults.lanPreview,
 		createdAt: new Date().toISOString(),
 	}
 	await fs.mkdir(path.join(config.dataDir, sandbox.name), { recursive: true })
@@ -61,6 +74,10 @@ export async function update(name: string, patch: Partial<SandboxConfig> & { tok
 	if (patch.branch) sandbox.branch = patch.branch
 	if (patch.autosaveMinutes !== undefined) sandbox.autosaveMinutes = patch.autosaveMinutes
 	if (patch.autostart !== undefined) sandbox.autostart = Boolean(patch.autostart)
+	if (patch.memoryGb !== undefined) sandbox.memoryGb = Math.max(1, Number(patch.memoryGb) || defaults.memoryGb)
+	if (patch.cpus !== undefined) sandbox.cpus = Math.max(0.5, Number(patch.cpus) || defaults.cpus)
+	if (patch.idleStopHours !== undefined) sandbox.idleStopHours = Math.max(0, Number(patch.idleStopHours) || 0)
+	if (patch.lanPreview !== undefined) sandbox.lanPreview = Boolean(patch.lanPreview)
 	if (patch.token !== undefined) await setToken(name, patch.token)
 	await writeAll(list)
 	return sandbox

@@ -4,7 +4,9 @@
 	"private": true,
 	"type": "module",
 	"description": "Web UI that creates, starts and stops dev sandboxes through the Docker API",
-	"engines": { "node": ">=22" },
+	"engines": {
+		"node": ">=22"
+	},
 	"packageManager": "pnpm@9.15.0",
 	"scripts": {
 		"dev": "concurrently -k \"tsx watch src/server.ts\" \"node build.mjs --watch\"",
@@ -15,17 +17,19 @@
 	"dependencies": {
 		"@hono/node-server": "^1.14.0",
 		"@hono/node-ws": "^1.1.0",
+		"@xterm/addon-fit": "^0.10.0",
+		"@xterm/xterm": "^5.5.0",
 		"dockerode": "^4.0.6",
 		"hono": "^4.7.0",
-		"tsx": "^4.20.0",
-		"@xterm/xterm": "^5.5.0",
-		"@xterm/addon-fit": "^0.10.0",
+		"qrcode": "^1.5.4",
 		"react": "^19.1.0",
-		"react-dom": "^19.1.0"
+		"react-dom": "^19.1.0",
+		"tsx": "^4.20.0"
 	},
 	"devDependencies": {
 		"@types/dockerode": "^3.3.38",
 		"@types/node": "^22.0.0",
+		"@types/qrcode": "^1.5.6",
 		"@types/react": "^19.1.0",
 		"@types/react-dom": "^19.1.0",
 		"concurrently": "^9.1.0",

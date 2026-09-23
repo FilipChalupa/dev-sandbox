@@ -78,6 +78,13 @@ const cs = {
 	deleteTitle: 'Smazat sandbox',
 	deleteText: 'Sandbox „{name}“ se smaže. Soubory projektu ve složce zůstanou, pokud nezaškrtneš i jejich smazání.',
 	logLive: 'živě',
+	memory: 'Paměť (GB)',
+	cpus: 'Procesory',
+	idleStop: 'Zastavit po nečinnosti (hodin, 0 = nikdy)',
+	lanPreview: 'Náhled i pro telefon na stejné Wi‑Fi (s heslem)',
+	lanUrl: 'Na telefonu (stejná síť)',
+	qrHint: 'Naskenuj telefonem',
+	loginSuccess: 'Přihlášeno, sandbox se za chvíli připojí.',
 }
 const en: Dictionary = {
 	title: 'Sandboxes',
@@ -156,6 +163,13 @@ const en: Dictionary = {
 	deleteTitle: 'Delete sandbox',
 	deleteText: 'Sandbox "{name}" will be deleted. The project files stay in their folder unless you also tick deleting them.',
 	logLive: 'live',
+	memory: 'Memory (GB)',
+	cpus: 'CPUs',
+	idleStop: 'Stop when idle for (hours, 0 = never)',
+	lanPreview: 'Preview also for a phone on the same Wi‑Fi (with password)',
+	lanUrl: 'On a phone (same network)',
+	qrHint: 'Scan with a phone',
+	loginSuccess: 'Logged in, the sandbox connects in a moment.',
 }
 
 // Add a language: a new dictionary above and one line here.

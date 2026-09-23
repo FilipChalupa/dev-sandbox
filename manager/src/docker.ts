@@ -1,6 +1,6 @@
 import Docker from 'dockerode'
 import { config, hostManagerDir } from './config.js'
-import type { SandboxConfig } from './store.js'
+import { lanPort, type SandboxConfig } from './store.js'
 import path from 'node:path'
 import os from 'node:os'
 
@@ -34,20 +34,37 @@ export async function start(sandbox: SandboxConfig) {
 			`SANDBOX_AUTOSAVE_MINUTES=${sandbox.autosaveMinutes}`,
 			`SANDBOX_PREVIEW_URL=http://localhost:${sandbox.hostPort}`,
 		],
-		ExposedPorts: { '8080/tcp': {} },
+		ExposedPorts: { '8080/tcp': {}, '8081/tcp': {} },
 		HostConfig: {
 			Binds: [
 				`${hostWorkspace}:/workspace/${sandbox.name}`,
 				`${hostManagerDir(sandbox.name)}:/state`,
 				`${hostManagerDir('claude')}:/home/node/.claude`,
 			],
-			PortBindings: { '8080/tcp': [{ HostIp: '127.0.0.1', HostPort: String(sandbox.hostPort) }] },
+			PortBindings: {
+				'8080/tcp': [{ HostIp: '127.0.0.1', HostPort: String(sandbox.hostPort) }],
+				// The basic-auth listener on all interfaces, for phones on the same network.
+				...(sandbox.lanPreview ? { '8081/tcp': [{ HostIp: '0.0.0.0', HostPort: String(lanPort(sandbox)) }] } : {}),
+			},
+			Memory: Math.round(sandbox.memoryGb * 1024 ** 3),
+			MemorySwap: Math.round(sandbox.memoryGb * 1024 ** 3),
+			NanoCpus: Math.round(sandbox.cpus * 1e9),
+			PidsLimit: 4096,
 			// unless-stopped survives a reboot but respects an explicit Stop.
 			RestartPolicy: { Name: sandbox.autostart ? 'unless-stopped' : 'no' },
 			Init: true,
 		},
 	})
 	await container.start()
+}
+
+export async function startedAt(name: string) {
+	try {
+		const info = await docker.getContainer(containerName(name)).inspect()
+		return info.State.Running ? Date.parse(info.State.StartedAt) : 0
+	} catch {
+		return 0
+	}
 }
 
 export async function stop(name: string) {

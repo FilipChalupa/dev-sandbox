@@ -10,6 +10,7 @@ RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
 		ca-certificates curl gnupg git ffmpeg tmux jq less procps \
 		openssh-client vim-tiny gettext-base \
+		chromium fonts-liberation fonts-noto-color-emoji \
 	&& rm -rf /var/lib/apt/lists/*
 
 # Caddy: reverse proxy in front of the project's dev server, basic auth for
@@ -63,6 +64,7 @@ ENV BASH_ENV=/home/node/.fnm-env.sh
 
 # Scripts last, so that editing them does not reinstall anything above.
 COPY --chmod=755 bin/ /usr/local/bin/
+COPY --chmod=755 hooks/ /opt/sandbox/hooks/
 COPY templates/ /opt/sandbox/templates/
 
 # Mounted at runtime: /workspace/<name> (repository), /state (per-sandbox

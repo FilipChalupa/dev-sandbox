@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Usage: sandbox-screenshot [url-or-path] [output.png] [--mobile] [--full]
+# Renders the preview with headless Chromium so Claude can look at what the
+# person sees. Defaults: the current preview upstream, /tmp/screenshot.png,
+# desktop 1280x800. --mobile uses a phone viewport, --full the whole page.
+set -euo pipefail
+source sandbox-lib
+target=""; out="/tmp/screenshot.png"; size="1280,800"; full=0
+for a in "$@"; do
+	case "$a" in
+		--mobile) size="390,844" ;;
+		--full) full=1 ;;
+		*.png) out="$a" ;;
+		*) target="$a" ;;
+	esac
+done
+port="$(upstream_port)"
+case "$target" in
+	"") url="http://127.0.0.1:$port/" ;;
+	http://*|https://*) url="$target" ;;
+	/*) url="http://127.0.0.1:$port$target" ;;
+	*) url="http://127.0.0.1:$port/$target" ;;
+esac
+args=(--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars
+	--window-size="$size" --virtual-time-budget=5000 --screenshot="$out")
+[ "$full" = 1 ] && args+=(--screenshot-full-page)  # ignored by older builds
+chromium "${args[@]}" "$url" >/dev/null 2>&1
+echo "$out ($url, ${size/,/x})"
