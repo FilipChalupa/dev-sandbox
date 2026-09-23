@@ -31,7 +31,8 @@ button:disabled { opacity: .6; cursor: default; }
 .access-row .v { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; background: var(--bg); padding: 3px 8px; border-radius: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: all; }
 .access-row a.v { color: var(--primary); text-decoration: none; }
 .qr { width: 96px; height: 96px; border-radius: 6px; background: #fff; flex: none; }
-.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 560px) { .grid3 { grid-template-columns: 1fr; } }
 .git { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; align-items: baseline; }
 .git button.link, .links button.link { padding: 0; font-size: inherit; line-height: inherit; }
 .warn-text { color: var(--warn); }
@@ -42,11 +43,12 @@ button:disabled { opacity: .6; cursor: default; }
 .error { color: var(--danger); }
 .empty { color: var(--muted); text-align: center; padding: 40px 0; }
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; padding: 16px; }
-.modal-body { background: var(--card); border-radius: 12px; padding: 20px; width: 100%; max-width: 520px; display: grid; gap: 14px; max-height: 90vh; overflow: auto; }
+.modal-body { background: var(--card); border-radius: 12px; padding: 20px; width: 100%; max-width: 520px; display: grid; gap: 14px; max-height: 90vh; overflow-y: auto; overflow-x: hidden; box-sizing: border-box; }
 .modal-body.terminal { max-width: 960px; padding: 8px; background: #000; }
 .xterm-host { height: 70vh; }
-label { display: grid; gap: 4px; font-size: 14px; }
-input { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
+label { display: grid; gap: 4px; font-size: 14px; min-width: 0; }
+input { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); width: 100%; min-width: 0; box-sizing: border-box; }
+input[type=checkbox] { width: auto; }
 small { color: var(--muted); }
 pre.logs { font-size: 12px; white-space: pre-wrap; max-height: 60vh; overflow: auto; background: var(--bg); padding: 10px; border-radius: 8px; }
 code { background: var(--bg); padding: 1px 5px; border-radius: 4px; }
