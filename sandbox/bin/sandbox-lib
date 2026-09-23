@@ -56,7 +56,9 @@ preview_password() {
 	elif [ -s "$f" ]; then
 		cat "$f"
 	else
-		local pw; pw="$(LC_ALL=C tr -dc 'a-z0-9' < <(head -c 400 /dev/urandom))"
+		# Lowercase letters and digits without the look-alikes (0/o, 1/l/i,
+		# 5/s, 2/z, 8/b, 9/g, 6/b): the password gets typed from a QR or read aloud.
+		local pw; pw="$(LC_ALL=C tr -dc 'acdefhjkmnpqrtuvwxy347' < <(head -c 600 /dev/urandom))"
 		printf '%s' "${pw:0:12}"
 	fi
 }

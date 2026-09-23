@@ -17,6 +17,7 @@ check "bitbucket token user" "$(git_username_for bitbucket.org)" "x-token-auth"
 check "github token user" "$(git_username_for github.com)" "x-access-token"
 check "other host token user" "$(git_username_for git.example.com)" "token"
 check "generated password length" "$(preview_password | wc -c | tr -d ' ')" "12"
+check "password avoids look-alike characters" "$(preview_password | tr -d 'acdefhjkmnpqrtuvwxy347' | wc -c | tr -d ' ')" "0"
 check "default upstream port" "$(upstream_port)" "3000"
 write_state upstream-port 5173
 check "stored upstream port" "$(upstream_port)" "5173"
