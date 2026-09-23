@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { api, type LoginState, type Sandbox, type UpdateCheck } from './api'
 import { LangContext, detectLang, languages, saveLang, useT, type Lang } from './i18n'
@@ -206,7 +206,25 @@ function Qr({ text }: { text: string }) {
 // Basic auth in the URL, so a phone opens it without typing the password.
 const withAuth = (url: string, user: string, pw: string) => url.replace(/^(https?:\/\/)/, `$1${encodeURIComponent(user)}:${encodeURIComponent(pw)}@`)
 
-function Copy({ text }: { text: string }) {
+// Address + credentials for a preview, laid out so each value can be copied.
+function Access({ title, url, user, password, extra }: { title: string; url: string; user: string; password: string; extra?: ReactNode }) {
+	const t = useT()
+	const full = withAuth(url, user, password)
+	return (
+		<div className="access">
+			<Qr text={full} />
+			<div className="access-rows">
+				<div className="access-title">{title}{extra}</div>
+				<div className="access-row"><span className="k">{t('address')}</span><a className="v" href={url} target="_blank" rel="noreferrer">{url}</a><Copy text={url} /></div>
+				<div className="access-row"><span className="k">{t('user')}</span><code className="v">{user}</code><Copy text={user} /></div>
+				<div className="access-row"><span className="k">{t('passwordLabel')}</span><code className="v">{password}</code><Copy text={password} /></div>
+				<div className="access-row"><span className="k" /><Copy text={full} label={t('copyLinkWithPassword')} /></div>
+			</div>
+		</div>
+	)
+}
+
+function Copy({ text, label }: { text: string; label?: string }) {
 	const t = useT()
 	const [ok, setOk] = useState(false)
 	return (
@@ -220,7 +238,7 @@ function Copy({ text }: { text: string }) {
 				} catch {}
 			}}
 		>
-			{ok ? t('copied') : t('copy')}
+			{ok ? t('copied') : label ?? t('copy')}
 		</button>
 	)
 }
@@ -311,29 +329,20 @@ function SandboxCard({ s, lanHost, lanHosts, onLanHost, run, setModal, setError 
 						{!st.claude.serverRunning && <span className="warn-text">{t('claudeOffline')}</span>}
 					</div>
 					{st.preview.tunnelUrl && (
-						<div className="shared">
-							<Qr text={withAuth(st.preview.tunnelUrl, st.preview.user, st.preview.password)} />
-							<div>
-								{t('shared')}: <a href={st.preview.tunnelUrl} target="_blank" rel="noreferrer">{st.preview.tunnelUrl}</a> <Copy text={st.preview.tunnelUrl} />
-								<br />
-								{st.preview.user} / {t('password')}: <code>{st.preview.password}</code> <Copy text={st.preview.password} />
-							</div>
-						</div>
+						<Access title={t('shared')} url={st.preview.tunnelUrl} user={st.preview.user} password={st.preview.password} />
 					)}
 					{s.lanPreview && lanHost && (
-						<div className="shared">
-							<Qr text={withAuth(`http://${lanHost}:${s.lanPort}/`, st.preview.user, st.preview.password)} />
-							<div>
-								{t('lanUrl')}: <a href={`http://${lanHost}:${s.lanPort}/`} target="_blank" rel="noreferrer">http://{lanHost}:{s.lanPort}/</a>
-								{lanHosts.length > 1 && (
-									<select className="lang small" value={lanHost} onChange={(e) => onLanHost(e.target.value)} aria-label={t('lanIp')}>
-										{lanHosts.map((h) => <option key={h.host} value={h.host}>{h.label === h.host ? h.host : `${h.label} (${h.host})`}</option>)}
-									</select>
-								)}
-								<br />
-								{st.preview.user} / {t('password')}: <code>{st.preview.password}</code>
-							</div>
-						</div>
+						<Access
+							title={t('lanUrl')}
+							url={`http://${lanHost}:${s.lanPort}/`}
+							user={st.preview.user}
+							password={st.preview.password}
+							extra={lanHosts.length > 1 && (
+								<select className="lang small" value={lanHost} onChange={(e) => onLanHost(e.target.value)} aria-label={t('lanIp')}>
+									{lanHosts.map((h) => <option key={h.host} value={h.host}>{h.label === h.host ? h.host : `${h.label} (${h.host})`}</option>)}
+								</select>
+							)}
+						/>
 					)}
 					<div className="git">
 						{st.git.dirty > 0 && <span className="warn-text">{t('uncommitted', { n: st.git.dirty })}</span>}

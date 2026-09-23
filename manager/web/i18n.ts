@@ -105,6 +105,10 @@ const cs = {
 	unknown: 'neznámé',
 	uptime: 'běží od',
 	lastActivity: 'poslední aktivita',
+	address: 'Adresa',
+	user: 'Uživatel',
+	passwordLabel: 'Heslo',
+	copyLinkWithPassword: 'Kopírovat odkaz i s heslem',
 }
 const en: Dictionary = {
 	title: 'Sandboxes',
@@ -210,6 +214,10 @@ const en: Dictionary = {
 	unknown: 'unknown',
 	uptime: 'up since',
 	lastActivity: 'last activity',
+	address: 'Address',
+	user: 'User',
+	passwordLabel: 'Password',
+	copyLinkWithPassword: 'Copy link with password',
 }
 
 // Add a language: a new dictionary above and one line here.
