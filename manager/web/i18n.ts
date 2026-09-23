@@ -181,8 +181,13 @@ const cs = {
 	prunedNothing: 'Není co uklidit.',
 	memoryWarning: 'Sandboxy mají dohromady limit {limits} GB, Docker Desktop má jen {total} GB. Sniž limity v nastavení sandboxů, nebo přidej paměť Dockeru.',
 	memoryLimits: 'Limity sandboxů',
-	openFolder: 'Otevřít složku ve Finderu',
-	folderCopied: 'Cesta ke složce je ve schránce. Ve Finderu stiskni ⌘⇧G a vlož ji.',
+	openFolder: 'Otevřít složku v aplikaci {app}',
+	copyFolder: 'Kopírovat cestu ke složce',
+	folderCopied: 'Cesta ke složce je ve schránce.',
+	folderCopiedMac: 'Cesta ke složce je ve schránce. Ve Finderu stiskni ⌘⇧G a vlož ji.',
+	appFinder: 'Finder',
+	appExplorer: 'Průzkumník',
+	appFiles: 'správce souborů',
 }
 const en: Dictionary = {
 	title: 'Sandboxes',
@@ -364,8 +369,13 @@ const en: Dictionary = {
 	prunedNothing: 'Nothing to clean up.',
 	memoryWarning: 'The sandboxes have {limits} GB of limits in total, Docker Desktop only has {total} GB. Lower the limits in the sandbox settings or give Docker more memory.',
 	memoryLimits: 'Sandbox limits',
-	openFolder: 'Open folder in Finder',
-	folderCopied: 'The folder path is in the clipboard. In Finder press ⌘⇧G and paste it.',
+	openFolder: 'Open folder in {app}',
+	copyFolder: 'Copy folder path',
+	folderCopied: 'The folder path is in the clipboard.',
+	folderCopiedMac: 'The folder path is in the clipboard. In Finder press ⌘⇧G and paste it.',
+	appFinder: 'Finder',
+	appExplorer: 'Explorer',
+	appFiles: 'the file manager',
 }
 
 // Add a language: a new dictionary above and one line here.

@@ -82,6 +82,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 	const [modal, setModal] = useState<Modal | null>(null)
 	const [, setBusy] = useLocalLoading()
 	const [lanHosts, setLanHosts] = useState<{ host: string; label: string }[]>([])
+	const [host, setHost] = useState<{ hostDir: string; helper: boolean }>({ hostDir: '', helper: false })
 	const [lanChoice, setLanChoice] = useState(() => {
 		try {
 			return localStorage.getItem('sandbox-manager.lanHost') ?? ''
@@ -109,7 +110,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 
 	useEffect(() => {
 		const load = () => {
-			api.info().then((i) => setLanHosts(i.lanHosts ?? [])).catch(() => {})
+			api.info().then((i) => { setLanHosts(i.lanHosts ?? []); setHost({ hostDir: i.hostDir, helper: i.helper }) }).catch(() => {})
 			api.updates().then(setUpdates).catch(() => {})
 		}
 		load()
@@ -243,7 +244,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 			) : (
 				<ul className="cards">
 					{sorted.map((s) => (
-						<SandboxCard key={s.name} s={s} usage={stats[s.name] ?? null} lang={lang} lanHost={lanHost} lanHosts={lanHosts} onLanHost={chooseLan} run={run} setModal={setModal} />
+						<SandboxCard key={s.name} s={s} usage={stats[s.name] ?? null} host={host} lang={lang} lanHost={lanHost} lanHosts={lanHosts} onLanHost={chooseLan} run={run} setModal={setModal} />
 					))}
 				</ul>
 			)}
@@ -439,9 +440,20 @@ function Welcome({ onCreate }: { onCreate: () => void }) {
 
 // ---------------------------------------------------------------- card
 
-function SandboxCard({ s, usage, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
+// Where the project lives on the host, shown the way the OS shows paths.
+function folderPath(hostDir: string, name: string) {
+	if (!hostDir) return `~/Sandboxes/${name}`
+	const win = hostDir.includes('\\')
+	const full = win ? `${hostDir.replace(/\\$/, '')}\\${name}` : `${hostDir.replace(/\/$/, '')}/${name}`
+	return win ? full : full.replace(/^\/(Users|home)\/[^/]+/, '~')
+}
+
+const platform = /Mac/i.test(navigator.platform) ? 'mac' : /Win/i.test(navigator.platform) ? 'win' : 'other'
+
+function SandboxCard({ s, usage, host, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
 	s: Sandbox
 	usage: { cpuPercent: number; memMb: number; memLimitMb: number } | null
+	host: { hostDir: string; helper: boolean }
 	lang: string
 	lanHost: string
 	lanHosts: { host: string; label: string }[]
@@ -567,20 +579,20 @@ function SandboxCard({ s, usage, lang, lanHost, lanHosts, onLanHost, run, setMod
 						<span>{t('branch')}: <code>{st?.git.branch || s.branch}</code></span>
 						<button
 							className="meta-link"
-							title={t('openFolder')}
+							title={host.helper ? t('openFolder', { app: platform === 'mac' ? t('appFinder') : platform === 'win' ? t('appExplorer') : t('appFiles') }) : t('copyFolder')}
 							onClick={async () => {
 								try {
-									const r = await api.openFolder(s.name)
+									const r = host.helper ? await api.openFolder(s.name) : { opened: false, path: folderPath(host.hostDir, s.name) }
 									if (!r.opened) {
 										await navigator.clipboard.writeText(r.path).catch(() => {})
-										toast('info', t('folderCopied'))
+										toast('info', platform === 'mac' ? t('folderCopiedMac') : t('folderCopied'))
 									}
 								} catch (e) {
 									toast('error', humanizeError(e instanceof Error ? e.message : String(e), t))
 								}
 							}}
 						>
-							<Icon name="folder" size={13} /> ~/Sandboxes/{s.name}
+							<Icon name="folder" size={13} /> {folderPath(host.hostDir, s.name)}
 						</button>
 						{running && usage && <span title={t('memoryLimits')}>{t('usage', { cpu: usage.cpuPercent, mem: (usage.memMb / 1024).toFixed(1), limit: (usage.memLimitMb / 1024).toFixed(0) })}</span>}
 					</div>
