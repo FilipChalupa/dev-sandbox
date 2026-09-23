@@ -9,6 +9,7 @@ const ctx = await esbuild.context({
 	sourcemap: true,
 	minify: !watch,
 	loader: { '.css': 'css' },
+	charset: 'utf8',
 	logLevel: 'info',
 })
 if (watch) await ctx.watch()
