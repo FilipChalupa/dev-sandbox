@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Installs the Node version the project wants, if it is not the default.
+# fnm picks it up automatically in every shell (see ~/.fnm-env.sh).
+set -uo pipefail
+source sandbox-lib
+cd "$SANDBOX_WORKSPACE" || exit 0
+export FNM_DIR=/home/node/.local/share/fnm PATH="/home/node/.local/share/fnm:$PATH"
+want=""
+if [ -f .nvmrc ]; then want="$(tr -d '[:space:]v' < .nvmrc)"
+elif [ -f .node-version ]; then want="$(tr -d '[:space:]v' < .node-version)"
+elif [ -f package.json ]; then
+	# ">=20.11 <23" → 20; "^22" → 22; "20.x" → 20
+	want="$(jq -r '.engines.node // empty' package.json 2>/dev/null | grep -o -E '[0-9]+(\.[0-9]+)*' | head -n 1)"
+fi
+[ -n "$want" ] || { echo "no Node version requested, keeping the default $(node --version)"; exit 0; }
+case "$want" in lts*|latest|node) ;; *) want="${want%%.x}" ;; esac
+if [ "${want%%.*}" = "$(node --version | tr -d v | cut -d. -f1)" ] && [ "$want" = "${want%%.*}" ]; then
+	echo "project wants Node $want, the default $(node --version) already matches"
+	exit 0
+fi
+echo "project wants Node $want, installing…"
+timeout 300 fnm install "$want" && echo "installed: $(fnm exec --using "$want" node --version 2>/dev/null)"

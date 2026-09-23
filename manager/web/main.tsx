@@ -221,7 +221,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 							},
 						]}
 					/>
-					<button className="primary" onClick={() => setModal({ kind: 'create' })}><Icon name="plus" /> {t('newSandbox')}</button>
+					<button className="primary" onClick={() => setModal({ kind: 'create' })}><Icon name="plus" /> <span className="btn-text">{t('newSandbox')}</span></button>
 				</div>
 			</header>
 
@@ -470,7 +470,7 @@ function SandboxCard({ s, usage, lang, lanHost, lanHosts, onLanHost, run, setMod
 	const waiting = busy !== '' || pending !== null
 	useMirrorLoading(waiting)
 	const [expanded, setExpanded] = useState<boolean | null>(null)
-	const open = expanded ?? running
+	const open = expanded ?? (running || Boolean(s.failure))
 	const working = Boolean(st && isRecent(st.lastActivity, 60_000))
 
 	const action = async (what: 'share' | 'unshare' | 'save' | 'restart-claude' | 'dev-start' | 'dev-stop') => {
@@ -539,29 +539,49 @@ function SandboxCard({ s, usage, lang, lanHost, lanHosts, onLanHost, run, setMod
 				</button>
 				<h2>{s.name}</h2>
 				{statusPill}
-				{running && st && stage.step === 3 && (
-					st.preview.devServerUp ? (
-						<Pill tone="on">{t('devServerUp')}</Pill>
-					) : busy === 'dev' || pending ? (
-						<Pill tone="work"><Spinner /> {t('devStarting')}</Pill>
-					) : (
-						<Pill tone="off">{t('devServerDown')} · <button className="pill-link" onClick={() => action('dev-start')}>{t('devStart')}</button> · <button className="pill-link" onClick={() => setModal({ kind: 'devlog', name: s.name })}>log</button></Pill>
-					)
-				)}
-				{running && st && !st.claude.serverRunning && stage.step === 3 && <Pill tone="error">{t('claudeOffline')}</Pill>}
-				{running && st && st.preview.proxyUp === false && <Pill tone="error">{t('proxyDown')}</Pill>}
-				{s.outdated && <Pill tone="warn">{t('outdated')} · <button className="pill-link" onClick={() => run(() => api.start(s.name))}>{t('restart')}</button></Pill>}
 				<span className="grow" />
 				{primary}
 				<Menu icon="more" label={undefined} items={menuItems} />
 			</div>
+			{running && st && (stage.step === 3 || st.preview.proxyUp === false || s.outdated) && (
+				<div className="card-pills">
+					{stage.step === 3 && (
+						st.preview.devServerUp ? (
+							<Pill tone="on">{t('devServerUp')}</Pill>
+						) : busy === 'dev' || pending ? (
+							<Pill tone="work"><Spinner /> {t('devStarting')}</Pill>
+						) : (
+							<Pill tone="off">{t('devServerDown')} · <button className="pill-link" onClick={() => action('dev-start')}>{t('devStart')}</button> · <button className="pill-link" onClick={() => setModal({ kind: 'devlog', name: s.name })}>log</button></Pill>
+						)
+					)}
+					{!st.claude.serverRunning && stage.step === 3 && <Pill tone="error">{t('claudeOffline')}</Pill>}
+					{st.preview.proxyUp === false && <Pill tone="error">{t('proxyDown')}</Pill>}
+					{s.outdated && <Pill tone="warn">{t('outdated')} · <button className="pill-link" onClick={() => run(() => api.start(s.name))}>{t('restart')}</button></Pill>}
+				</div>
+			)}
 
 			{open && (
 				<>
 					<div className="meta">
 						<span><Icon name="git" size={13} /> {s.repoUrl ? s.repoUrl.replace(/^https?:\/\//, '') : t('noRemote')}</span>
 						<span>{t('branch')}: <code>{st?.git.branch || s.branch}</code></span>
-						<span><Icon name="folder" size={13} /> ~/Sandboxes/{s.name}</span>
+						<button
+							className="meta-link"
+							title={t('openFolder')}
+							onClick={async () => {
+								try {
+									const r = await api.openFolder(s.name)
+									if (!r.opened) {
+										await navigator.clipboard.writeText(r.path).catch(() => {})
+										toast('info', t('folderCopied'))
+									}
+								} catch (e) {
+									toast('error', humanizeError(e instanceof Error ? e.message : String(e), t))
+								}
+							}}
+						>
+							<Icon name="folder" size={13} /> ~/Sandboxes/{s.name}
+						</button>
 						{running && usage && <span title={t('memoryLimits')}>{t('usage', { cpu: usage.cpuPercent, mem: (usage.memMb / 1024).toFixed(1), limit: (usage.memLimitMb / 1024).toFixed(0) })}</span>}
 					</div>
 

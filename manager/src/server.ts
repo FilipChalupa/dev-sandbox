@@ -9,7 +9,7 @@ import * as dk from './docker.js'
 import * as store from './store.js'
 import * as login from './login.js'
 import * as registry from './registry.js'
-import { hostInfo, lanHosts } from './host.js'
+import { hostInfo, lanHosts, openOnHost } from './host.js'
 import fs from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
 
@@ -155,6 +155,14 @@ app.post('/api/sandboxes/:name/save', async (c) => {
 	}
 })
 
+// Open the project folder in Finder through the host helper.
+app.post('/api/sandboxes/:name/open-folder', async (c) => {
+	const name = c.req.param('name')
+	if (!(await store.readAll()).some((s) => s.name === name)) return json({ error: 'Unknown sandbox' }, 404)
+	const hostPath = path.posix.join(config.hostDir, name)
+	return json({ opened: await openOnHost(hostPath), path: hostPath })
+})
+
 app.post('/api/check-repo', async (c) => {
 	try {
 		const { repoUrl, token, username } = await c.req.json()
@@ -264,7 +272,7 @@ app.get('/api/update', () => json(progress()))
 
 app.get('/api/info', async () => {
 	const hosts = await lanHosts()
-	return json({ image: config.image, hostDir: config.hostDir, lanHosts: hosts, lanHost: hosts[0]?.host ?? '', manager: managerVersion })
+	return json({ image: config.image, hostDir: config.hostDir, lanHosts: hosts, lanHost: hosts[0]?.host ?? '', helper: (await hostInfo()).helper, manager: managerVersion })
 })
 
 app.get('/api/updates', async () => {

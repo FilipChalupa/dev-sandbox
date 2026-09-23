@@ -13,7 +13,8 @@
 body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
 main { max-width: 880px; margin: 0 auto; padding: 20px 16px 80px; }
 header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
-header h1 { margin: 0; font-size: 22px; flex: 1; display: flex; align-items: center; gap: 8px; }
+header h1 { margin: 0; font-size: 22px; flex: 1; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+@media (max-width: 480px) { header h1 { font-size: 19px; } button.primary .btn-text { display: none; } .card-head .btn-text { display: none; } }
 h2 { font-size: 17px; margin: 0; }
 h3 { font-size: 13px; margin: 0 0 6px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .icon { vertical-align: -3px; flex: none; }
@@ -74,7 +75,9 @@ select.inline { font-size: 12px; padding: 2px 6px; margin-left: 8px; }
 .card.on { border-left-color: var(--on); } .card.warn { border-left-color: var(--warn); } .card.off { border-left-color: var(--off); }
 .card.collapsed { padding-top: 8px; padding-bottom: 8px; gap: 0; box-shadow: none; }
 .card.collapsed .chevron .icon { transform: rotate(-90deg); }
-.card-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.card-head { display: flex; align-items: center; gap: 10px; }
+.card-head h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -4px; }
 .card-head h2 { margin-right: 2px; }
 .chevron { margin-left: -6px; }
 .chevron .icon { transition: transform .15s; }
@@ -102,7 +105,7 @@ select.inline { font-size: 12px; padding: 2px 6px; margin-left: 8px; }
 .qr-modal { max-width: 620px; }
 .pill-link { border: none; background: none; padding: 0; color: var(--primary); font: inherit; font-weight: 600; cursor: pointer; }
 .pill-link:hover { text-decoration: underline; }
-@media (max-width: 560px) { .access { flex-direction: column; } .access-row { grid-template-columns: 1fr auto; } .access-row .k { grid-column: 1 / -1; } }
+@media (max-width: 560px) { .access { flex-direction: column; } .access > .qr { align-self: center; width: 160px; height: 160px; } .access-row { grid-template-columns: 1fr auto; } .access-row .k { grid-column: 1 / -1; } }
 
 /* welcome */
 .welcome { text-align: center; padding: 48px 16px; display: grid; gap: 12px; justify-items: center; color: var(--muted); }
@@ -140,7 +143,7 @@ input.invalid { border-color: var(--danger); }
 small { color: var(--muted); }
 .row { display: flex; gap: 8px; }
 .row input { flex: 1; }
-.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: end; }
 @media (max-width: 560px) { .grid3 { grid-template-columns: 1fr; } }
 .invite { display: grid; gap: 2px; padding: 8px 10px; border: 1px dashed var(--line-strong); border-radius: 8px; }
 .invite button.link { justify-self: start; padding: 0; }
@@ -173,10 +176,12 @@ pre.logs { font-size: 12px; white-space: pre-wrap; max-height: 60vh; overflow: a
 button.busy { border-color: var(--primary); color: var(--primary); }
 .failure { display: grid; gap: 6px; padding: 10px 12px; border-radius: 10px; background: var(--danger-bg); font-size: 13px; }
 .failure-title { display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--danger); }
-.failure pre { max-height: 120px; }
+.failure pre { max-height: 120px; color: var(--text); }
 .check-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
 textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--bg); color: var(--text); width: 100%; resize: vertical; }
 .prompts { display: grid; gap: 8px; padding: 10px 12px; border: 1px dashed var(--line-strong); border-radius: 10px; font-size: 13px; }
 .prompts-title { display: flex; align-items: center; gap: 6px; font-weight: 600; flex-wrap: wrap; }
 .prompts-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .prompt { border-radius: 999px; padding: 4px 10px; font-size: 13px; background: var(--bg); }
+.meta-link { border: none; background: none; padding: 0; color: var(--muted); font: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+.meta-link:hover { color: var(--primary); text-decoration: underline; }

@@ -74,6 +74,10 @@ log "on branch $(git branch --show-current)"
 
 sandbox-git-identity || true
 
+# Node version the project asks for (.nvmrc, .node-version, engines.node):
+# install it now in the background so the first command does not wait.
+sandbox-node-prepare >> "$(state_file fnm.log)" 2>&1 &
+
 # Claude asks once per directory whether to trust it, and once whether to
 # enable Remote Control. Nobody sits at this terminal, so answer up front.
 cfg="$CLAUDE_CONFIG_DIR/.claude.json"

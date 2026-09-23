@@ -82,8 +82,9 @@ UI:
   manager pulls its image and a helper container swaps it out),
 - QR codes for the shared URL and, when enabled, a LAN preview link
   (`http://<mac-ip>:<port>`, basic auth) for a phone on the same Wi-Fi; the
-  Mac's address comes from a launchd job the installer sets up, which writes
-  `.manager/host.json` every minute (a container cannot see the host's address),
+  Mac's address comes from a launchd helper the installer sets up, which
+  writes `.manager/host.json` every minute (a container cannot see the host's
+  address) and executes open requests every second,
 - "What changed today": today's commits and the files being worked on,
 - a "new version" badge on the update buttons, from comparing the local image
   digest with the registry,
@@ -109,6 +110,9 @@ UI:
   of sandbox memory limits exceeds Docker's memory,
 - cleanup of old images of ours that no container uses (also runs after each
   successful update),
+- clicking the project folder opens it in Finder through the host helper
+  (a request file it executes with `open`); without the helper the path is
+  copied to the clipboard,
 - English and Czech, switchable.
 
 ### Sandbox container
@@ -163,6 +167,14 @@ coming through the tunnel.
    and opens `http://localhost:8787`.
 3. In the UI: New sandbox, paste the repository URL and token, Start, log in to
    Claude in the embedded terminal, click "Open in claude.ai/code".
+
+## Visual check
+
+`scripts/screenshots.sh [docker-cli] [image]` photographs the running manager
+with the Chromium from the sandbox image (containers reach each other by
+name on a Docker network): list and new-sandbox form, light and dark, desktop
+and phone width, into `screenshots/`. Used to review layout changes without a
+browser at hand.
 
 ## Tests
 

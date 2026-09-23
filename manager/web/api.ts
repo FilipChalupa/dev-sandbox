@@ -62,6 +62,7 @@ export const api = {
 	devLog: (name: string) => fetch(`/api/sandboxes/${name}/dev-log`).then((r) => r.text()),
 	stats: () => call<Record<string, { cpuPercent: number; memMb: number; memLimitMb: number } | null>>('GET', '/api/stats'),
 	prune: () => call<{ removed: number; freedMb: number }>('POST', '/api/prune'),
+	openFolder: (name: string) => call<{ opened: boolean; path: string }>('POST', `/api/sandboxes/${name}/open-folder`),
 	login: {
 		status: (name: string) => call<LoginState | null>('GET', `/api/sandboxes/${name}/login`),
 		start: (name: string) => call<LoginState>('POST', `/api/sandboxes/${name}/login`),
