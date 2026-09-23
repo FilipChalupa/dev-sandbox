@@ -31,6 +31,7 @@ export async function start(sandbox: SandboxConfig) {
 			`SANDBOX_NAME=${sandbox.name}`,
 			`SANDBOX_REPO_URL=${sandbox.repoUrl}`,
 			`SANDBOX_BRANCH=${sandbox.branch}`,
+			`SANDBOX_GIT_USERNAME=${sandbox.gitUsername ?? ''}`,
 			`SANDBOX_AUTOSAVE_MINUTES=${sandbox.autosaveMinutes}`,
 			`SANDBOX_PREVIEW_URL=http://localhost:${sandbox.hostPort}`,
 		],

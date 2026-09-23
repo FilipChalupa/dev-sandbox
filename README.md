@@ -44,6 +44,27 @@ Code admin settings.
   `uninstall.sh`).
 - `docs/` – design notes.
 
+## Handing a project to the colleague
+
+1. In Bitbucket open the repository, **Repository settings → Access tokens →
+   Create**, scope *Repositories: read and write*. Copy the token.
+2. Run the manager yourself, click **New sandbox**, fill in the name, the
+   repository URL and the token (or paste the URL with the token inside:
+   `https://x-token-auth:TOKEN@bitbucket.org/workspace/repo.git`), and click
+   **Copy as a link for a colleague**. Do not click Create unless you want the
+   sandbox on your own machine too.
+3. Send the link through a safe channel (a password manager share, a
+   self-destructing note). It looks like
+   `http://localhost:8787/#new?name=site&repo=…&token=…` and opens the
+   colleague's manager with the form pre-filled; the token never leaves their
+   browser except into their own manager.
+4. Optional but recommended: in Bitbucket **Branch permissions**, protect the
+   main branches so the token can only push to `sandbox/*`. The sandbox has
+   its own guard too, but this one is enforced server side.
+
+The colleague clicks the link, clicks Create, then Start, logs in to Claude
+once, and opens claude.ai.
+
 ## Languages
 
 The manager UI is in English and Czech, chosen from the browser language and

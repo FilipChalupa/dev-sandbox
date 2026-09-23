@@ -8,6 +8,7 @@ export type SandboxConfig = {
 	branch: string
 	hostPort: number
 	autosaveMinutes: number
+	gitUsername: string
 	autostart: boolean
 	memoryGb: number
 	cpus: number
@@ -23,7 +24,7 @@ const file = () => managerDir('sandboxes.json')
 export async function readAll(): Promise<SandboxConfig[]> {
 	try {
 		const list = JSON.parse(await fs.readFile(file(), 'utf8')) as Partial<SandboxConfig>[]
-		return list.map((s) => ({ ...defaults, autostart: false, ...s }) as SandboxConfig)
+		return list.map((s) => ({ ...defaults, autostart: false, gitUsername: '', ...s }) as SandboxConfig)
 	} catch {
 		return []
 	}
@@ -36,12 +37,35 @@ async function writeAll(list: SandboxConfig[]) {
 	await fs.writeFile(file(), JSON.stringify(list, null, '\t') + '\n')
 }
 
+// A pasted URL may carry credentials (https://x-token-auth:TOKEN@bitbucket.org/…).
+// Keep them out of the stored URL: the token goes to the token file instead.
+export function splitCredentials(url: string): { url: string; username: string; token: string } {
+	try {
+		const u = new URL(url)
+		if (!u.username && !u.password) return { url, username: '', token: '' }
+		const username = decodeURIComponent(u.username)
+		const token = decodeURIComponent(u.password || u.username) // "TOKEN@host" without a user
+		if (!u.password) return { url: `${u.protocol}//${u.host}${u.pathname}`, username: '', token }
+		u.username = ''
+		u.password = ''
+		return { url: u.toString(), username, token }
+	} catch {
+		return { url, username: '', token: '' }
+	}
+}
+
 export const validName = (name: string) => /^[a-z0-9][a-z0-9-]{0,40}$/.test(name)
 
 export async function create(input: Partial<SandboxConfig> & { name: string; token?: string }) {
 	const list = await readAll()
 	if (!validName(input.name)) throw new Error('Name: lowercase letters, digits and dashes only')
 	if (list.some((s) => s.name === input.name)) throw new Error('A sandbox with this name exists')
+	const creds = splitCredentials(input.repoUrl ?? '')
+	if (creds.token) {
+		input.repoUrl = creds.url
+		input.token = input.token || creds.token
+		input.gitUsername = input.gitUsername || creds.username
+	}
 	const used = new Set(list.map((s) => s.hostPort))
 	let port = config.firstPort
 	while (used.has(port)) port++
@@ -51,6 +75,7 @@ export async function create(input: Partial<SandboxConfig> & { name: string; tok
 		branch: input.branch || `sandbox/${input.name}`,
 		hostPort: port,
 		autosaveMinutes: input.autosaveMinutes ?? 10,
+		gitUsername: input.gitUsername ?? '',
 		autostart: input.autostart ?? false,
 		memoryGb: input.memoryGb ?? defaults.memoryGb,
 		cpus: input.cpus ?? defaults.cpus,
@@ -70,7 +95,15 @@ export async function update(name: string, patch: Partial<SandboxConfig> & { tok
 	const list = await readAll()
 	const sandbox = list.find((s) => s.name === name)
 	if (!sandbox) throw new Error('Unknown sandbox')
-	if (patch.repoUrl !== undefined) sandbox.repoUrl = patch.repoUrl
+	if (patch.repoUrl !== undefined) {
+		const creds = splitCredentials(patch.repoUrl)
+		sandbox.repoUrl = creds.url
+		if (creds.token) {
+			patch.token = patch.token || creds.token
+			if (creds.username) sandbox.gitUsername = creds.username
+		}
+	}
+	if (patch.gitUsername !== undefined) sandbox.gitUsername = patch.gitUsername
 	if (patch.branch) sandbox.branch = patch.branch
 	if (patch.autosaveMinutes !== undefined) sandbox.autosaveMinutes = patch.autosaveMinutes
 	if (patch.autostart !== undefined) sandbox.autostart = Boolean(patch.autostart)

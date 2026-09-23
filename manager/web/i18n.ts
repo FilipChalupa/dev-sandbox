@@ -109,6 +109,9 @@ const cs = {
 	user: 'Uživatel',
 	passwordLabel: 'Heslo',
 	copyLinkWithPassword: 'Kopírovat odkaz i s heslem',
+	inviteLink: 'Kopírovat jako odkaz pro kolegu',
+	inviteHint: 'Odkaz otevře tento formulář předvyplněný (včetně tokenu). Posílej ho bezpečným kanálem.',
+	repoHintToken: 'Adresa může obsahovat i token: https://x-token-auth:TOKEN@bitbucket.org/… Uloží se odděleně.',
 }
 const en: Dictionary = {
 	title: 'Sandboxes',
@@ -218,6 +221,9 @@ const en: Dictionary = {
 	user: 'User',
 	passwordLabel: 'Password',
 	copyLinkWithPassword: 'Copy link with password',
+	inviteLink: 'Copy as a link for a colleague',
+	inviteHint: 'The link opens this form pre-filled (token included). Send it through a safe channel.',
+	repoHintToken: 'The address may include the token: https://x-token-auth:TOKEN@bitbucket.org/… It is stored separately.',
 }
 
 // Add a language: a new dictionary above and one line here.

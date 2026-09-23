@@ -4,6 +4,7 @@ export type Sandbox = {
 	branch: string
 	hostPort: number
 	autosaveMinutes: number
+	gitUsername: string
 	autostart: boolean
 	memoryGb: number
 	cpus: number

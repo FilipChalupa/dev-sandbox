@@ -46,7 +46,7 @@ function Root() {
 }
 
 type Modal =
-	| { kind: 'create' }
+	| { kind: 'create'; initial?: Partial<Sandbox> & { token?: string } }
 	| { kind: 'edit'; s: Sandbox }
 	| { kind: 'terminal'; name: string; cmd: 'shell' | 'login' | 'claude' }
 	| { kind: 'logs'; name: string }
@@ -87,6 +87,18 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 		return () => clearInterval(id)
 	}, [])
 	const close = () => setModal(null)
+
+	// #new?name=…&repo=…&token=…&branch=… opens the form pre-filled (an invite
+	// link from the developer). The fragment never reaches the server.
+	useEffect(() => {
+		if (!location.hash.startsWith('#new')) return
+		const q = new URLSearchParams(location.hash.replace(/^#new\??/, ''))
+		setModal({
+			kind: 'create',
+			initial: { name: q.get('name') ?? '', repoUrl: q.get('repo') ?? '', branch: q.get('branch') ?? '', token: q.get('token') ?? '' },
+		})
+		history.replaceState(null, '', location.pathname)
+	}, [])
 
 	const run = async (fn: () => Promise<unknown>) => {
 		setBusy(true)
@@ -170,7 +182,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 				</ul>
 			)}
 			{modal?.kind === 'create' && (
-				<SandboxForm onCancel={close} onSubmit={async (body) => { await run(() => api.create(body)); close() }} />
+				<SandboxForm initial={modal.initial} onCancel={close} onSubmit={async (body) => { await run(() => api.create(body)); close() }} />
 			)}
 			{modal?.kind === 'edit' && (
 				<SandboxForm existing={modal.s} onCancel={close} onSubmit={async (body) => { await run(() => api.update(modal.s.name, body)); close() }} />
@@ -595,12 +607,20 @@ function DeleteDialog({ s, onCancel, onConfirm }: { s: Sandbox; onCancel: () => 
 	)
 }
 
-function SandboxForm({ existing, onSubmit, onCancel }: { existing?: Sandbox; onSubmit: (body: object) => Promise<void>; onCancel: () => void }) {
+function SandboxForm({ existing, initial, onSubmit, onCancel }: { existing?: Sandbox; initial?: Partial<Sandbox> & { token?: string }; onSubmit: (body: object) => Promise<void>; onCancel: () => void }) {
 	const t = useT()
-	const [name, setName] = useState(existing?.name ?? '')
-	const [repoUrl, setRepoUrl] = useState(existing?.repoUrl ?? '')
-	const [token, setToken] = useState('')
-	const [branch, setBranch] = useState(existing?.branch ?? '')
+	const [name, setName] = useState(existing?.name ?? initial?.name ?? '')
+	const [repoUrl, setRepoUrl] = useState(existing?.repoUrl ?? initial?.repoUrl ?? '')
+	const [token, setToken] = useState(initial?.token ?? '')
+	const [branch, setBranch] = useState(existing?.branch ?? initial?.branch ?? '')
+	const inviteLink = () => {
+		const q = new URLSearchParams()
+		if (name) q.set('name', name)
+		if (repoUrl) q.set('repo', repoUrl)
+		if (branch) q.set('branch', branch)
+		if (token) q.set('token', token)
+		return `${location.origin}${location.pathname}#new?${q.toString()}`
+	}
 	const [autostart, setAutostart] = useState(existing?.autostart ?? false)
 	const [memoryGb, setMemoryGb] = useState(existing?.memoryGb ?? 4)
 	const [cpus, setCpus] = useState(existing?.cpus ?? 2)
@@ -630,7 +650,7 @@ function SandboxForm({ existing, onSubmit, onCancel }: { existing?: Sandbox; onS
 				<label>
 					{t('repoUrl')}
 					<input value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder="https://bitbucket.org/workspace/repo.git" />
-					<small>{t('repoHint')}</small>
+					<small>{t('repoHint')} {t('repoHintToken')}</small>
 				</label>
 				<label>
 					{t('token')}
@@ -661,6 +681,12 @@ function SandboxForm({ existing, onSubmit, onCancel }: { existing?: Sandbox; onS
 						<input type="number" min={0} step={1} value={idleStopHours} onChange={(e) => setIdleStopHours(Number(e.target.value))} />
 					</label>
 				</div>
+				{!existing && (repoUrl || token) && (
+					<div className="invite">
+						<Copy text={inviteLink()} label={t('inviteLink')} />
+						<small>{t('inviteHint')}</small>
+					</div>
+				)}
 				<div className="actions">
 					<button type="button" onClick={onCancel}>{t('cancel')}</button>
 					<button type="submit" className="primary" disabled={busy}>{existing ? t('save') : t('create')}</button>
