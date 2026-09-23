@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Usage: sandbox-save [message]
+# Commits everything and pushes the working branch. Used by the autosave loop
+# and by the "Send to developer" button. Refuses to touch a repository in the
+# middle of a merge or rebase.
+set -uo pipefail
+source sandbox-lib
+cd "$SANDBOX_WORKSPACE" || exit 1
+[ -d .git ] || { echo "not a git repository"; exit 1; }
+if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ] || [ -f .git/MERGE_HEAD ]; then
+	echo "merge or rebase in progress, not saving"; exit 2
+fi
+git config user.email >/dev/null 2>&1 || sandbox-git-identity >/dev/null 2>&1 || { echo "no git identity yet (Claude not logged in?)"; exit 3; }
+msg="${1:-wip: autosave $(date '+%Y-%m-%d %H:%M')}"
+if [ -n "$(git status --porcelain)" ]; then
+	git add -A
+	git commit -q -m "$msg" && echo "committed: $msg"
+fi
+if git remote get-url origin >/dev/null 2>&1 && git rev-parse --verify -q HEAD >/dev/null; then
+	if ! git rev-parse --verify -q '@{u}' >/dev/null || [ -n "$(git rev-list '@{u}..HEAD' 2>/dev/null)" ]; then
+		if out="$(git push -u origin "$SANDBOX_BRANCH" 2>&1)"; then
+			echo "pushed $SANDBOX_BRANCH"
+		else
+			echo "push failed: $(tail -n 3 <<<"$out")"; exit 4
+		fi
+	else
+		echo "nothing to push"
+	fi
+else
+	echo "no remote configured, saved locally only"
+fi

@@ -10,7 +10,7 @@ when a request is ambiguous.
 - Work only on the branch `${SANDBOX_BRANCH}`. Never switch branches, never
   push to any other branch, never force push, never rewrite history.
 - After each finished change, commit with a short message that says what
-  changed and push (`git push`). The developer on the team merges this branch
+  changed and push (`git push`). `sandbox-save "message"` does both. The developer on the team merges this branch
   when the person asks them to.
 - Never commit `.env` or other secrets. When the project needs values in
   `.env`, ask the person for them and write them there.
@@ -24,8 +24,12 @@ when a request is ambiguous.
   (for example in a `tmux` session or with `nohup … &`), and let them listen
   on `127.0.0.1` or `0.0.0.0`.
 - The person sees the project at **${SANDBOX_PREVIEW_URL}**. That address
-  proxies to port 3000 inside the sandbox. If the dev server uses another
-  port, run `sandbox-preview <port>` once and the address keeps working.
+  proxies to whatever port the dev server listens on inside the sandbox; the
+  sandbox detects it on its own. Only if it picks the wrong one, run
+  `sandbox-preview <port>`.
+- If the project needs a different Node version (`.nvmrc`, `.node-version`,
+  `engines` in `package.json`), use `fnm install <version>` and
+  `fnm use <version>`; Node 24 is the default.
 - When the person wants to show the site to somebody else, run
   `sandbox-share` and give them the public URL, user name and password it
   prints. `sandbox-unshare` stops sharing. The public URL changes each time.
@@ -35,6 +39,10 @@ when a request is ambiguous.
 - Images, fonts and other assets they attach belong in the repository.
   Put them where the project keeps such files (for example `public/`,
   `assets/` or `src/assets/`) and tell them the path.
+
+## Language
+
+- Answer in the language the person writes in.
 
 ## Boundaries
 

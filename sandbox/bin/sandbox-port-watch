@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Keeps the preview pointed at a live dev server. If the configured upstream
+# port stops listening and some other port starts, switch to it (lowest port
+# wins, so 3000 beats a Vite HMR side port). A port set with sandbox-preview
+# is pinned for as long as it is alive.
+source sandbox-lib
+while true; do
+	current="$(upstream_port)"
+	ports="$(sandbox-ports)"
+	if [ -n "$ports" ] && ! grep -qx "$current" <<<"$ports"; then
+		new="$(head -n 1 <<<"$ports")"
+		log "dev server not on $current, switching preview to $new"
+		write_state upstream-port "$new"
+		sandbox-caddy-reload >/dev/null 2>&1 || true
+	fi
+	sleep 3
+done

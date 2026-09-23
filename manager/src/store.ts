@@ -8,6 +8,7 @@ export type SandboxConfig = {
 	branch: string
 	hostPort: number
 	autosaveMinutes: number
+	autostart: boolean
 	createdAt: string
 }
 
@@ -41,6 +42,7 @@ export async function create(input: Partial<SandboxConfig> & { name: string; tok
 		branch: input.branch || `sandbox/${input.name}`,
 		hostPort: port,
 		autosaveMinutes: input.autosaveMinutes ?? 10,
+		autostart: input.autostart ?? false,
 		createdAt: new Date().toISOString(),
 	}
 	await fs.mkdir(path.join(config.dataDir, sandbox.name), { recursive: true })
@@ -58,6 +60,7 @@ export async function update(name: string, patch: Partial<SandboxConfig> & { tok
 	if (patch.repoUrl !== undefined) sandbox.repoUrl = patch.repoUrl
 	if (patch.branch) sandbox.branch = patch.branch
 	if (patch.autosaveMinutes !== undefined) sandbox.autosaveMinutes = patch.autosaveMinutes
+	if (patch.autostart !== undefined) sandbox.autostart = Boolean(patch.autostart)
 	if (patch.token !== undefined) await setToken(name, patch.token)
 	await writeAll(list)
 	return sandbox

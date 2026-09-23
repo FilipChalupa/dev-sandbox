@@ -4,15 +4,18 @@ export type Sandbox = {
 	branch: string
 	hostPort: number
 	autosaveMinutes: number
+	autostart: boolean
 	hasToken: boolean
 	container: { exists: boolean; running: boolean; status: string; image: string }
 	status: null | {
 		git: { branch: string; remote: string; dirty: number; ahead: number; lastCommit: string }
-		claude: { loggedIn: boolean; email: string; serverRunning: boolean; sessionUrl: string }
-		preview: { url: string; upstreamPort: number; tunnelUrl: string; user: string; password: string }
+		claude: { loggedIn: boolean; email: string; serverRunning: boolean; supervisorRunning: boolean; sessionUrl: string }
+		preview: { url: string; upstreamPort: number; devServerUp: boolean; tunnelUrl: string; user: string; password: string }
 		updatedAt: string
 	}
 }
+
+export type LoginState = { url: string; done: boolean; error: string; invalidCode: boolean; output: string }
 
 async function call<T>(method: string, url: string, body?: unknown): Promise<T> {
 	const res = await fetch(url, {
@@ -35,5 +38,14 @@ export const api = {
 	remove: (name: string, files: boolean) => call<unknown>('DELETE', `/api/sandboxes/${name}?files=${files ? 1 : 0}`),
 	logs: (name: string) => fetch(`/api/sandboxes/${name}/logs`).then((r) => r.text()),
 	update_image: () => call<{ log: string[] }>('POST', '/api/update'),
+	self_update: () => call<{ ok: boolean }>('POST', '/api/self-update'),
+	action: (name: string, what: 'share' | 'unshare' | 'save' | 'restart-claude') =>
+		call<{ ok: boolean; output: string }>('POST', `/api/sandboxes/${name}/${what}`),
+	login: {
+		status: (name: string) => call<LoginState | null>('GET', `/api/sandboxes/${name}/login`),
+		start: (name: string) => call<LoginState>('POST', `/api/sandboxes/${name}/login`),
+		code: (name: string, code: string) => call<LoginState>('POST', `/api/sandboxes/${name}/login/code`, { code }),
+		cancel: (name: string) => call<unknown>('DELETE', `/api/sandboxes/${name}/login`),
+	},
 	info: () => call<{ image: string; hostDir: string }>('GET', '/api/info'),
 }

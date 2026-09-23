@@ -62,21 +62,31 @@ A container with the Docker socket mounted. Through the Docker API it creates
 sandbox containers with the right mounts, ports and environment. State is a few
 JSON files under `~/Sandboxes/.manager`.
 
-UI (v1):
+UI:
 
-- list of sandboxes with status (running, stopped, waiting for Claude login, error),
-- Start, Stop, Delete, New,
+- list of sandboxes with status (running, stopped, waiting for Claude login),
+  and a three-step guide on each card until it is ready: start, log in, open,
+- Start, Stop, Delete (dialog with an option to delete the files), New,
+- Claude login without a terminal: the manager runs `claude auth login` in
+  the sandbox, shows the OAuth link and passes the pasted code back,
 - "Open in claude.ai/code" (session URL read from the Remote Control server output),
-- preview link `http://localhost:<port>`, and the public tunnel URL plus password while sharing is on,
-- repository URL, token and branch, editable later (a project can start with no remote),
-- git status: uncommitted changes, last push,
-- an embedded terminal (xterm.js) into the sandbox for the one-time Claude login and for debugging,
-- logs and an "Update" button that pulls new images.
+- preview link `http://localhost:<port>` with "project server is running / not
+  running", Share / Stop sharing with the tunnel URL and password and copy buttons,
+- "Send to developer": commit everything and push the working branch,
+- "Restart Claude" when the Remote Control server is offline,
+- repository URL, token, branch and "start automatically with Docker",
+  editable later (a project can start with no remote),
+- git status: uncommitted changes, unpushed commits, last commit,
+- an embedded terminal (xterm.js) into the sandbox as a fallback,
+- a live log, "Update" (pulls the sandbox image) and "Update manager" (the
+  manager pulls its image and a helper container swaps it out),
+- English and Czech, switchable.
 
 ### Sandbox container
 
-Image: Debian based, Node 24 (corepack/pnpm enabled), git, ffmpeg, tmux,
-Caddy, cloudflared, Claude Code. Runs as an unprivileged user.
+Image: Debian based, Node 24 (corepack/pnpm enabled) with fnm for other Node
+versions, git, ffmpeg, tmux, Caddy, cloudflared, Claude Code. Runs as an
+unprivileged user. Empty projects get a default `.gitignore`.
 
 Processes inside:
 
@@ -88,6 +98,9 @@ Processes inside:
   tunnel, writes the URL to `status.json` and prints it so Claude can pass it on.
   `sandbox-unshare` stops the tunnel,
 - optional autosave loop,
+- `sandbox-port-watch`: follows whatever port the dev server listens on and
+  points Caddy at it, so nothing has to be configured per project,
+- `sandbox-save`: commit everything and push (used by autosave and the UI),
 - `sandbox-status` writing `status.json` (session URL, tunnel URL, upstream
   port, git state, logged-in account) for the manager.
 

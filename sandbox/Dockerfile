@@ -48,6 +48,19 @@ ENV HOME=/home/node \
 RUN curl -fsSL https://claude.ai/install.sh | bash \
 	&& claude --version
 
+# fnm: other Node versions on demand (`fnm install 20`). Every bash, even a
+# non-interactive one from Claude, sources ~/.fnm-env.sh and picks the version
+# from .nvmrc / .node-version in the current directory when there is one.
+RUN curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell --install-dir /home/node/.local/share/fnm \
+	&& printf '%s\n' \
+		'export FNM_DIR=/home/node/.local/share/fnm' \
+		'export PATH="$FNM_DIR:$PATH"' \
+		'eval "$(fnm env --use-on-cd --version-file-strategy=local --shell bash 2>/dev/null)"' \
+		'fnm use --silent-if-unchanged --install-if-missing >/dev/null 2>&1 || true' \
+		> /home/node/.fnm-env.sh \
+	&& echo 'source ~/.fnm-env.sh' >> /home/node/.bashrc
+ENV BASH_ENV=/home/node/.fnm-env.sh
+
 # Scripts last, so that editing them does not reinstall anything above.
 COPY --chmod=755 bin/ /usr/local/bin/
 COPY templates/ /opt/sandbox/templates/

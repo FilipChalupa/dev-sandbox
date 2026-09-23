@@ -40,3 +40,14 @@ input { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-
 small { color: var(--muted); }
 pre.logs { font-size: 12px; white-space: pre-wrap; max-height: 60vh; overflow: auto; background: var(--bg); padding: 10px; border-radius: 8px; }
 code { background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+.steps { margin: 0; padding: 0 0 0 22px; display: grid; gap: 6px; font-size: 14px; }
+.steps li { color: var(--muted); }
+.steps li.now { color: var(--text); font-weight: 600; }
+.steps li.done { text-decoration: line-through; }
+.ok-text { color: var(--on); }
+.row { display: flex; gap: 8px; }
+.row input { flex: 1; }
+label.check { display: flex; align-items: center; gap: 8px; }
+.modal-body.wide { max-width: 900px; }
+.small { font-size: 12px; font-weight: normal; }
+button.danger-btn { background: var(--danger); border-color: var(--danger); color: #fff; }

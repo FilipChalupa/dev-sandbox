@@ -2,6 +2,7 @@ import Docker from 'dockerode'
 import { config, hostManagerDir } from './config.js'
 import type { SandboxConfig } from './store.js'
 import path from 'node:path'
+import os from 'node:os'
 
 export const docker = new Docker()
 
@@ -41,7 +42,8 @@ export async function start(sandbox: SandboxConfig) {
 				`${hostManagerDir('claude')}:/home/node/.claude`,
 			],
 			PortBindings: { '8080/tcp': [{ HostIp: '127.0.0.1', HostPort: String(sandbox.hostPort) }] },
-			RestartPolicy: { Name: 'no' },
+			// unless-stopped survives a reboot but respects an explicit Stop.
+			RestartPolicy: { Name: sandbox.autostart ? 'unless-stopped' : 'no' },
 			Init: true,
 		},
 	})
@@ -107,6 +109,55 @@ export async function pullImage(onProgress: (line: string) => void) {
 			(ev) => onProgress(`${ev.status ?? ''} ${ev.progress ?? ''}`.trim()),
 		)
 	})
+}
+
+// Run a command in the sandbox as the sandbox user and collect its output.
+export async function run(name: string, cmd: string[], timeoutMs = 90_000): Promise<{ code: number; output: string }> {
+	const container = docker.getContainer(containerName(name))
+	const e = await container.exec({ Cmd: cmd, AttachStdout: true, AttachStderr: true, User: 'node', WorkingDir: `/workspace/${name}` })
+	const stream = await e.start({})
+	const chunks: Buffer[] = []
+	await new Promise<void>((resolve, reject) => {
+		const timer = setTimeout(() => reject(new Error(`${cmd[0]} timed out`)), timeoutMs)
+		stream.on('data', (c: Buffer) => chunks.push(c))
+		stream.on('end', () => { clearTimeout(timer); resolve() })
+		stream.on('error', (err) => { clearTimeout(timer); reject(err) })
+	})
+	const { ExitCode } = await e.inspect()
+	return { code: ExitCode ?? 0, output: demux(Buffer.concat(chunks)).trim() }
+}
+
+// Follow the container log; each chunk is already demultiplexed text.
+export async function followLogs(name: string, onLine: (text: string) => void, tail = 200) {
+	const container = docker.getContainer(containerName(name))
+	const stream = (await container.logs({ follow: true, stdout: true, stderr: true, tail })) as NodeJS.ReadableStream
+	stream.on('data', (chunk: Buffer) => onLine(demux(chunk)))
+	return () => (stream as any).destroy?.()
+}
+
+// Replace the running manager with a fresh container from the newest image.
+// The manager cannot replace itself while running, so it pulls the image and
+// hands the swap to a short-lived helper container started from that image.
+export async function selfUpdate() {
+	const self = await docker.getContainer(os.hostname()).inspect()
+	const image = self.Config.Image
+	if (image.includes('/')) await pullImage(() => {})
+	const spec = {
+		name: self.Name.replace(/^\//, ''),
+		image,
+		env: self.Config.Env ?? [],
+		binds: self.HostConfig.Binds ?? [],
+		ports: self.HostConfig.PortBindings ?? {},
+		exposed: self.Config.ExposedPorts ?? {},
+		restart: self.HostConfig.RestartPolicy ?? { Name: 'unless-stopped' },
+	}
+	const helper = await docker.createContainer({
+		Image: image,
+		Cmd: ['node', '--import', 'tsx', 'src/self-update.ts'],
+		Env: [`SPEC=${JSON.stringify(spec)}`],
+		HostConfig: { Binds: ['/var/run/docker.sock:/var/run/docker.sock'], AutoRemove: true },
+	})
+	await helper.start()
 }
 
 // Interactive exec for the browser terminal.

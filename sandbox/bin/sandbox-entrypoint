@@ -57,6 +57,7 @@ if [ ! -d .git ]; then
 	else
 		log "no repository URL, starting an empty project"
 		git init -q -b "$SANDBOX_BRANCH" .
+		cp /opt/sandbox/templates/gitignore .gitignore
 	fi
 fi
 if [ -n "$repo_url" ]; then
@@ -115,10 +116,10 @@ fi
 sandbox-status-loop &
 pids+=($!)
 
-# Claude needs a terminal: run the supervisor loop inside tmux and copy its
-# output to a log the status writer can parse.
-tmux new-session -d -s claude -x 200 -y 50 -c "$SANDBOX_WORKSPACE" sandbox-claude-loop
-tmux pipe-pane -t claude -o "cat >> $(state_file claude.log)"
+sandbox-port-watch >> "$(state_file port-watch.log)" 2>&1 &
+pids+=($!)
+
+sandbox-claude-start >/dev/null
 
 log "sandbox '$SANDBOX_NAME' is up; preview password for user '$SANDBOX_PREVIEW_USER' is in $(state_file preview-password)"
 wait

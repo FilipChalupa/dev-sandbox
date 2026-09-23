@@ -19,6 +19,8 @@ else
 	dirty=0; branch=""; ahead=0; last=""; remote=""
 fi
 if tunnel_running; then tunnel="$(tunnel_url)"; else tunnel=""; fi
+if grep -qx "$(upstream_port)" <<<"$(sandbox-ports)"; then dev_up=true; else dev_up=false; fi
+if tmux has-session -t claude 2>/dev/null; then tmux_up=true; else tmux_up=false; fi
 
 jq -n \
 	--arg name "$SANDBOX_NAME" \
@@ -33,13 +35,15 @@ jq -n \
 	--argjson loggedIn "$logged_in" \
 	--arg email "$email" \
 	--argjson running "$running" \
+	--argjson devUp "$dev_up" \
+	--argjson tmuxUp "$tmux_up" \
 	--argjson dirty "${dirty:-0}" \
 	--argjson ahead "${ahead:-0}" \
 	--arg last "$last" \
 	'{
 		name: $name,
 		git: { branch: $branch, remote: $remote, dirty: $dirty, ahead: $ahead, lastCommit: $last },
-		claude: { loggedIn: $loggedIn, email: $email, serverRunning: $running, sessionUrl: $session },
-		preview: { url: $preview, upstreamPort: ($port | tonumber), tunnelUrl: $tunnel, user: $user, password: $pw },
+		claude: { loggedIn: $loggedIn, email: $email, serverRunning: $running, supervisorRunning: $tmuxUp, sessionUrl: $session },
+		preview: { url: $preview, upstreamPort: ($port | tonumber), devServerUp: $devUp, tunnelUrl: $tunnel, user: $user, password: $pw },
 		updatedAt: (now | todate)
 	}'

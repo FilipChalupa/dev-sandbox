@@ -56,5 +56,9 @@ can start sessions in it. Status for the manager is in `/state/status.json`.
 - `sandbox-preview <port>`: point the preview at the dev server's port.
 - `sandbox-share [<port>]`: start the public tunnel, print URL and credentials.
 - `sandbox-unshare`: stop the tunnel.
+- `sandbox-save [message]`: commit everything and push the working branch.
 - `sandbox-status`: print the status JSON.
+- `sandbox-claude-start`: restart the Claude Remote Control server.
+- `sandbox-ports`: list the ports something listens on (the preview follows
+  them automatically; `sandbox-preview` pins one).
 - `sandbox-git-identity`: set the commit identity from the Claude login.

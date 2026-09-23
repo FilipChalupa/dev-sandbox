@@ -23,10 +23,12 @@ architecture and decisions.
 2. Download [`Install sandbox.command`](installer/Install%20sandbox.command)
    and double-click it (or run `installer/install.sh` in a terminal).
 3. The manager opens at <http://localhost:8787>. Create a sandbox, start it,
-   click "Log in to Claude" the first time, then "Open in claude.ai".
+   log in to Claude the first time (the card walks you through it), then
+   "Open in claude.ai".
 
-Running the installer again updates the manager. The "Update" button in the
-UI updates the sandbox image; restart a sandbox to use it.
+"Update" in the UI pulls the newest sandbox image (restart a sandbox to use
+it), "Update manager" replaces the manager itself. Running the installer
+again does the same as "Update manager".
 
 Requirements on the Claude side: a Pro, Max, Team or Enterprise account. On
 Team and Enterprise plans an owner has to enable Remote Control in the Claude

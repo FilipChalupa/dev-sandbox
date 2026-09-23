@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Prints the TCP ports something is listening on inside the sandbox, one per
+# line, without our own infrastructure ports. Reads /proc so it needs no tools.
+set -uo pipefail
+own=" 8080 8081 2019 "
+for f in /proc/net/tcp /proc/net/tcp6; do
+	[ -r "$f" ] || continue
+	# columns: sl local_address rem_address st ...; st 0A = LISTEN
+	while read -r _ local _ st _; do
+		[ "$st" = "0A" ] || continue
+		p=$((16#${local##*:}))
+		case "$own" in *" $p "*) continue ;; esac
+		[ "$p" -ge 20000 ] && continue   # cloudflared metrics live up there
+		echo "$p"
+	done < <(tail -n +2 "$f")
+done | sort -n -u

@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+.next/
+.nuxt/
+.svelte-kit/
+.cache/
+.parcel-cache/
+.turbo/
+coverage/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log

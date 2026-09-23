@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Starts (or restarts) the tmux session that runs the Claude Remote Control
+# server. Claude needs a terminal, hence tmux; the pane is copied to a log
+# the status writer parses.
+source sandbox-lib
+if tmux has-session -t claude 2>/dev/null; then
+	tmux kill-session -t claude
+	pkill -f 'claude remote-control' 2>/dev/null || true
+	sleep 1
+fi
+tmux new-session -d -s claude -x 200 -y 50 -c "$SANDBOX_WORKSPACE" sandbox-claude-loop
+tmux pipe-pane -t claude -o "cat >> $(state_file claude.log)"
+echo "Claude server (re)started"

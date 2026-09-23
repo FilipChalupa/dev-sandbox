@@ -7,6 +7,16 @@ import { fileURLToPath } from 'node:url'
 import { config } from './config.js'
 import * as dk from './docker.js'
 import * as store from './store.js'
+import * as login from './login.js'
+
+const action = (cmd: string[]) => async (c: any) => {
+	try {
+		const r = await dk.run(c.req.param('name'), cmd)
+		return json({ ok: r.code === 0, output: r.output }, r.code === 0 ? 200 : 400)
+	} catch (e) {
+		return fail(e)
+	}
+}
 
 const app = new Hono()
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app })
@@ -78,6 +88,62 @@ app.delete('/api/sandboxes/:name', async (c) => {
 })
 
 app.get('/api/sandboxes/:name/logs', async (c) => c.text(await dk.logs(c.req.param('name'))))
+
+app.post('/api/sandboxes/:name/share', action(['sandbox-share']))
+app.post('/api/sandboxes/:name/unshare', action(['sandbox-unshare']))
+app.post('/api/sandboxes/:name/save', action(['sandbox-save', 'Changes from the sandbox']))
+app.post('/api/sandboxes/:name/restart-claude', action(['sandbox-claude-start']))
+
+app.get('/api/sandboxes/:name/login', (c) => json(login.status(c.req.param('name'))))
+app.post('/api/sandboxes/:name/login', async (c) => {
+	try {
+		return json(await login.start(c.req.param('name')))
+	} catch (e) {
+		return fail(e)
+	}
+})
+app.post('/api/sandboxes/:name/login/code', async (c) => {
+	try {
+		const { code } = await c.req.json()
+		return json(login.code(c.req.param('name'), String(code ?? '')))
+	} catch (e) {
+		return fail(e)
+	}
+})
+app.delete('/api/sandboxes/:name/login', (c) => {
+	login.cancel(c.req.param('name'))
+	return json({ ok: true })
+})
+
+app.post('/api/self-update', async () => {
+	try {
+		await dk.selfUpdate()
+		return json({ ok: true })
+	} catch (e) {
+		return fail(e)
+	}
+})
+
+// Live container log over a WebSocket.
+app.get(
+	'/api/sandboxes/:name/logs/stream',
+	upgradeWebSocket((c) => {
+		const name = c.req.param('name') ?? ''
+		let stop: (() => void) | undefined
+		return {
+			async onOpen(_ev, ws) {
+				try {
+					stop = await dk.followLogs(name, (text) => ws.send(text))
+				} catch (e) {
+					ws.send(`[cannot read log: ${e instanceof Error ? e.message : e}]`)
+				}
+			},
+			onClose() {
+				stop?.()
+			},
+		}
+	}),
+)
 
 app.post('/api/update', async () => {
 	const lines: string[] = []
