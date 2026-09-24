@@ -227,6 +227,21 @@ export async function selfImage() {
 	}
 }
 
+// Started by hand (Docker Desktop GUI, a plain `docker run`) the manager has
+// no restart policy and would not come back with Docker. Fix that ourselves.
+export async function ensureSelfRestartPolicy() {
+	try {
+		const me = docker.getContainer(os.hostname())
+		const info = await me.inspect()
+		if (info.HostConfig.RestartPolicy?.Name !== 'unless-stopped') {
+			await me.update({ RestartPolicy: { Name: 'unless-stopped' } })
+			console.log('restart policy set to unless-stopped')
+		}
+	} catch {
+		/* not running in Docker */
+	}
+}
+
 export async function selfUpdate() {
 	const self = await docker.getContainer(os.hostname()).inspect()
 	const image = self.Config.Image

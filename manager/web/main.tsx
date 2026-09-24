@@ -863,6 +863,7 @@ function Diagnostics({ lang, onClose }: { lang: string; onClose: () => void }) {
 						<h3>{t('diagHost')}</h3>
 						<dl>
 							<dt>{t('lanIp')}</dt><dd>{d.host.lanIp || t('unknown')} {d.host.hostName && <span className="muted">({d.host.hostName})</span>}</dd>
+							<dt></dt><dd className={d.host.helper ? 'ok-text' : 'warn-text'}>{d.host.helper ? t('helperOk') : t('helperMissing')}</dd>
 							{d.disk && <><dt>{t('diagDisk')}</dt><dd>{d.disk.freeGb} GB {t('free')} {t('of')} {d.disk.totalGb} GB</dd></>}
 						</dl>
 					</section>

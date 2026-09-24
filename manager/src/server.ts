@@ -350,6 +350,8 @@ app.use('/*', async (c, next) => {
 })
 app.use('/*', serveStatic({ root: path.relative(process.cwd(), publicDir) || '.' }))
 
+dk.ensureSelfRestartPolicy().catch(() => {})
+
 const server = serve({ fetch: app.fetch, port: config.port, hostname: '0.0.0.0' }, () =>
 	console.log(`manager on http://localhost:${config.port} (sandboxes in ${config.hostDir}, image ${config.image})`),
 )
