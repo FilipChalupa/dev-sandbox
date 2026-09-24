@@ -36,6 +36,7 @@ type Modal =
 	| { kind: 'logs'; name: string }
 	| { kind: 'login'; name: string }
 	| { kind: 'delete'; s: Sandbox }
+	| { kind: 'reset'; s: Sandbox }
 	| { kind: 'diagnostics' }
 	| { kind: 'changes'; name: string }
 	| { kind: 'qr'; text: string; title: string }
@@ -305,6 +306,20 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 					</div>
 				</Modal>
 			)}
+			{modal?.kind === 'reset' && (
+				<Modal title={<><Icon name="restart" /> {t('resetTitle')}</>} onClose={close}>
+					<p>{t('resetText', { name: modal.s.name })}</p>
+					{(() => {
+						const g = list?.find((x) => x.name === modal.s.name)?.status?.git
+						const loss = g && (g.dirty > 0 || g.ahead > 0)
+						return <p className={loss ? 'warn-text' : 'ok-text'}>{loss ? t('resetLoss', { dirty: g.dirty, ahead: g.ahead }) : t('resetSafe')}</p>
+					})()}
+					<div className="actions">
+						<button onClick={close}>{t('cancel')}</button>
+						<button className="danger-btn" onClick={async () => { close(); await run(() => api.reset(modal.s.name), t('resetDone')) }}><Icon name="restart" /> {t('reset')}</button>
+					</div>
+				</Modal>
+			)}
 			{modal?.kind === 'delete' && (
 				<DeleteDialog s={modal.s} onCancel={close} onConfirm={async (files) => { await run(() => api.remove(modal.s.name, files)); close() }} />
 			)}
@@ -569,6 +584,7 @@ function SandboxCard({ s, usage, host, lang, lanHost, lanHosts, onLanHost, run, 
 		{ label: t('restartClaude'), icon: 'restart', onClick: () => action('restart-claude'), disabled: !running },
 		{ label: t('logs'), icon: 'log', onClick: () => setModal({ kind: 'logs', name: s.name }) },
 		'sep' as const,
+		...(s.repoUrl ? [{ label: t('reset'), icon: 'restart', onClick: () => setModal({ kind: 'reset', s }), danger: true }] : []),
 		{ label: t('delete'), icon: 'trash', onClick: () => setModal({ kind: 'delete', s }), danger: true },
 	]
 

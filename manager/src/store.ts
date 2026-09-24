@@ -138,6 +138,19 @@ export async function writeInstructions(name: string, text: string) {
 	else await fs.rm(f, { force: true })
 }
 
+// Back to the state right after "New sandbox": the project folder, the
+// runtime state and Claude's session history go; the configuration, the token
+// and the developer's instructions stay.
+export async function resetFiles(name: string) {
+	const keep = new Set(['git-token', 'instructions.md'])
+	await fs.rm(path.join(config.dataDir, name), { recursive: true, force: true })
+	const state = managerDir(name)
+	try {
+		for (const f of await fs.readdir(state)) if (!keep.has(f)) await fs.rm(path.join(state, f), { recursive: true, force: true })
+	} catch {}
+	await fs.rm(managerDir('claude', 'projects', `-workspace-${name}`), { recursive: true, force: true })
+}
+
 export async function setToken(name: string, token: string) {
 	await fs.mkdir(managerDir(name), { recursive: true })
 	const f = managerDir(name, 'git-token')

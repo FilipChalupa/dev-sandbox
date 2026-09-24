@@ -49,6 +49,7 @@ export const api = {
 	update: (name: string, body: object) => call<Sandbox>('PATCH', `/api/sandboxes/${name}`, body),
 	start: (name: string) => call<Sandbox>('POST', `/api/sandboxes/${name}/start`),
 	stop: (name: string) => call<Sandbox>('POST', `/api/sandboxes/${name}/stop`),
+	reset: (name: string) => call<Sandbox>('POST', `/api/sandboxes/${name}/reset`),
 	remove: (name: string, files: boolean) => call<unknown>('DELETE', `/api/sandboxes/${name}?files=${files ? 1 : 0}`),
 	logs: (name: string) => fetch(`/api/sandboxes/${name}/logs`).then((r) => r.text()),
 	update_image: () => call<UpdateProgress>('POST', '/api/update'),

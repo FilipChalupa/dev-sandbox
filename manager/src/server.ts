@@ -103,6 +103,22 @@ app.post('/api/sandboxes/:name/stop', async (c) => {
 	}
 })
 
+// Fresh start: only for sandboxes backed by a git remote.
+app.post('/api/sandboxes/:name/reset', async (c) => {
+	try {
+		const name = c.req.param('name')
+		const s = (await store.readAll()).find((x) => x.name === name)
+		if (!s) return json({ error: 'Unknown sandbox' }, 404)
+		if (!s.repoUrl) return json({ error: 'No git repository, nothing to restore from' }, 400)
+		await dk.removeContainer(name)
+		await store.resetFiles(name)
+		await dk.start(s)
+		return json(await describe(s))
+	} catch (e) {
+		return fail(e)
+	}
+})
+
 app.delete('/api/sandboxes/:name', async (c) => {
 	try {
 		const name = c.req.param('name') ?? ''
