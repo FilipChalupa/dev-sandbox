@@ -9,9 +9,10 @@ export const docker = new Docker()
 
 const containerName = (name: string) => config.containerPrefix + name
 
-// Settings that only take effect when the container is created again.
+// Settings that only take effect when the container is created again
+// (limits, restart policy and instructions are applied live, see applyLive).
 export function configFingerprint(s: SandboxConfig) {
-	const relevant = [s.repoUrl, s.branch, s.gitUsername, s.autosaveMinutes, s.autostart, s.memoryGb, s.cpus, s.lanPreview, s.hostPort, s.instructions]
+	const relevant = [s.repoUrl, s.branch, s.gitUsername, s.autosaveMinutes, s.lanPreview, s.hostPort]
 	return createHash('sha1').update(JSON.stringify(relevant)).digest('hex').slice(0, 12)
 }
 
@@ -127,6 +128,20 @@ export async function start(sandbox: SandboxConfig) {
 		},
 	})
 	await container.start()
+}
+
+// Apply what Docker and the sandbox accept without a restart.
+export async function applyLive(sandbox: SandboxConfig, changed: { limits: boolean; autostart: boolean; instructions: boolean }) {
+	const c = docker.getContainer(containerName(sandbox.name))
+	const info = await c.inspect().catch(() => null)
+	if (!info?.State.Running) return
+	if (changed.limits || changed.autostart) {
+		await c.update({
+			...(changed.limits ? { Memory: Math.round(sandbox.memoryGb * 1024 ** 3), MemorySwap: Math.round(sandbox.memoryGb * 1024 ** 3), NanoCpus: Math.round(sandbox.cpus * 1e9) } : {}),
+			...(changed.autostart ? { RestartPolicy: { Name: sandbox.autostart ? 'unless-stopped' : 'no' } } : {}),
+		})
+	}
+	if (changed.instructions) await run(sandbox.name, ['sandbox-rules-write'], 30_000)
 }
 
 export async function startedAt(name: string) {

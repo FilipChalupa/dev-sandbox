@@ -93,14 +93,7 @@ jq --arg ws "$SANDBOX_WORKSPACE" '
 ' "$cfg" > "$cfg.tmp" && mv "$cfg.tmp" "$cfg"
 
 # --- rules for Claude, kept out of the repository -------------------------
-export SANDBOX_NAME SANDBOX_BRANCH SANDBOX_PREVIEW_URL
-envsubst '$SANDBOX_NAME $SANDBOX_BRANCH $SANDBOX_PREVIEW_URL' \
-	< /opt/sandbox/templates/CLAUDE.local.md > CLAUDE.local.md
-if [ -s "$(state_file instructions.md)" ]; then
-	printf '\n## Instructions from the developer\n\nThese come from the developer who set this sandbox up and take precedence over the general rules above.\n\n' >> CLAUDE.local.md
-	cat "$(state_file instructions.md)" >> CLAUDE.local.md
-	echo >> CLAUDE.local.md
-fi
+sandbox-rules-write >/dev/null
 mkdir -p .git/info
 grep -qx 'CLAUDE.local.md' .git/info/exclude 2>/dev/null || echo 'CLAUDE.local.md' >> .git/info/exclude
 for x in .env .playwright-mcp/; do

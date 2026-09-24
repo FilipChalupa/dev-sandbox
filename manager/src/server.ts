@@ -79,7 +79,16 @@ app.post('/api/sandboxes', async (c) => {
 
 app.patch('/api/sandboxes/:name', async (c) => {
 	try {
-		const s = await store.update(c.req.param('name'), await c.req.json())
+		const name = c.req.param('name')
+		const before = (await store.readAll()).find((x) => x.name === name)
+		const s = await store.update(name, await c.req.json())
+		if (before) {
+			await dk.applyLive(s, {
+				limits: before.memoryGb !== s.memoryGb || before.cpus !== s.cpus,
+				autostart: before.autostart !== s.autostart,
+				instructions: before.instructions !== s.instructions,
+			}).catch((e) => console.warn('live apply failed:', e instanceof Error ? e.message : e))
+		}
 		return json(await describe(s))
 	} catch (e) {
 		return fail(e)

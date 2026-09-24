@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# (Re)writes CLAUDE.local.md in the workspace: the general rules from the
+# template plus the developer's instructions from /state/instructions.md.
+# Run at start and whenever the instructions change.
+set -euo pipefail
+source sandbox-lib
+cd "$SANDBOX_WORKSPACE"
+export SANDBOX_NAME SANDBOX_BRANCH SANDBOX_PREVIEW_URL
+envsubst '$SANDBOX_NAME $SANDBOX_BRANCH $SANDBOX_PREVIEW_URL' \
+	< /opt/sandbox/templates/CLAUDE.local.md > CLAUDE.local.md.tmp
+if [ -s "$(state_file instructions.md)" ]; then
+	printf '\n## Instructions from the developer\n\nThese come from the developer who set this sandbox up and take precedence over the general rules above.\n\n' >> CLAUDE.local.md.tmp
+	cat "$(state_file instructions.md)" >> CLAUDE.local.md.tmp
+	echo >> CLAUDE.local.md.tmp
+fi
+mv CLAUDE.local.md.tmp CLAUDE.local.md
+echo "rules written"
