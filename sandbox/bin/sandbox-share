@@ -11,7 +11,7 @@ if [ -n "${1:-}" ]; then
 fi
 
 if ! tunnel_running; then
-	rm -f "$(state_file tunnel-url)"
+	rm -f "$(state_file tunnel-url)" "$(state_file cloudflared.pid)"
 	: > "$(state_file cloudflared.log)"
 	nohup cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8081 \
 		>> "$(state_file cloudflared.log)" 2>&1 &

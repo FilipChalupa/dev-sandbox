@@ -404,7 +404,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 				</Modal>
 			)}
 			{modal?.kind === 'delete' && (
-				<DeleteDialog s={modal.s} onCancel={close} onConfirm={async (files) => { await run(() => api.remove(modal.s.name, files)); close() }} />
+				<DeleteDialog s={list?.find((x) => x.name === modal.s.name) ?? modal.s} onCancel={close} onConfirm={async (files) => { await run(() => api.remove(modal.s.name, files)); close() }} />
 			)}
 		</main>
 	)
@@ -1078,9 +1078,18 @@ function Diagnostics({ lang, onClose }: { lang: string; onClose: () => void }) {
 function DeleteDialog({ s, onCancel, onConfirm }: { s: Sandbox; onCancel: () => void; onConfirm: (files: boolean) => Promise<void> }) {
 	const t = useT()
 	const [files, setFiles] = useState(false)
+	const g = s.status?.git
+	const loss = g && (g.dirty > 0 || g.ahead > 0)
 	return (
 		<Modal title={<><Icon name="trash" /> {t('deleteTitle')}</>} onClose={onCancel}>
 			<p>{t('deleteText', { name: s.name })}</p>
+			{s.repoUrl && (
+				g ? (
+					<p className={loss ? 'warn-text' : 'ok-text'}>{loss ? t('resetLoss', { dirty: g.dirty, ahead: g.ahead }) : t('resetSafe')}</p>
+				) : (
+					<p className="warn-text">{t('deleteUnknown')}</p>
+				)
+			)}
 			<label className="check">
 				<input type="checkbox" checked={files} onChange={(e) => setFiles(e.target.checked)} /> {t('deleteFiles')}
 			</label>
@@ -1094,7 +1103,7 @@ function DeleteDialog({ s, onCancel, onConfirm }: { s: Sandbox; onCancel: () => 
 
 function SandboxForm({ existing, initial, onSubmit, onCancel }: { existing?: Sandbox; initial?: Partial<Sandbox> & { token?: string }; onSubmit: (body: object) => Promise<void>; onCancel: () => void }) {
 	const t = useT()
-	const [name, setName] = useState(existing?.name ?? initial?.name ?? nameFromRepo(initial?.repoUrl ?? ''))
+	const [name, setName] = useState(existing?.name ?? (initial?.name || nameFromRepo(initial?.repoUrl ?? '')))
 	const [nameTouched, setNameTouched] = useState(Boolean(existing || initial?.name))
 	// The name follows the repository until the person edits it.
 	const onRepoUrl = (v: string) => {

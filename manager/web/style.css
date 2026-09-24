@@ -184,7 +184,7 @@ textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--line-strong
 .prompts-title { display: flex; align-items: center; gap: 6px; font-weight: 600; flex-wrap: wrap; }
 .prompts-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .prompt { border-radius: 999px; padding: 4px 10px; font-size: 13px; background: var(--bg); }
-.meta-link { border: none; background: none; padding: 0; color: var(--muted); font: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; text-decoration: none; }
+.meta-link { border: none; background: none; padding: 0; color: var(--muted); font: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; text-decoration: none; white-space: normal; text-align: left; word-break: break-all; }
 a.meta-link { color: inherit; }
 .meta a code, .git a code { color: var(--link); }
 .meta a, .git a { text-decoration: none; }
@@ -195,3 +195,14 @@ a.meta-link { color: inherit; }
 .grip { cursor: grab; color: var(--muted); font-size: 14px; letter-spacing: -3px; user-select: none; padding: 0 2px; }
 .grip:active { cursor: grabbing; }
 .card.dragging { opacity: .5; }
+/* phone: the head wraps, the main action takes its own line */
+@media (max-width: 560px) {
+	.card { padding: 12px; }
+	.card-head { flex-wrap: wrap; row-gap: 8px; }
+	.card-head .grow { display: none; }
+	.card-head > .button.primary, .card-head > button.primary { order: 5; flex: 1 1 auto; justify-content: center; }
+	.card-head > .menu { order: 6; }
+	.card.collapsed .card-head > .button.primary, .card.collapsed .card-head > button.primary { flex: 0 0 auto; margin-left: auto; }
+	.meta { word-break: break-all; }
+	.pill { white-space: normal; }
+}

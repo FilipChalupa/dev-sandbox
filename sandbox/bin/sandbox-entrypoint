@@ -129,6 +129,12 @@ start_service ports "exec sandbox-port-watch >> $(state_file port-watch.log) 2>&
 start_service thumb "exec sandbox-thumb-loop >> $(state_file thumb.log) 2>&1"
 sandbox-claude-start >/dev/null
 
+# Sharing was on before this restart: bring the tunnel back (new URL).
+if [ -s "$(state_file tunnel-url)" ]; then
+	rm -f "$(state_file cloudflared.pid)"
+	(sleep 5; sandbox-share >> "$(state_file cloudflared.log)" 2>&1 && log "sharing restored: $(tunnel_url)") &
+fi
+
 log "sandbox '$SANDBOX_NAME' is up; preview password for user '$SANDBOX_PREVIEW_USER' is in $(state_file preview-password)"
 while true; do
 	sleep 10
