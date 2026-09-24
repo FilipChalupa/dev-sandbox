@@ -190,3 +190,5 @@ a.meta-link { color: inherit; }
 .meta a, .git a { text-decoration: none; }
 .meta a:hover, .git a:hover { text-decoration: underline; }
 .meta-link:hover { color: var(--link); text-decoration: underline; }
+.thumb { display: block; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); background: #fff; max-width: 320px; }
+.thumb img { display: block; width: 100%; height: auto; }

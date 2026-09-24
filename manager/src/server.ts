@@ -42,6 +42,7 @@ async function idleSweep() {
 		const last = Math.max(started, Date.parse(st?.lastActivity ?? '') || 0)
 		if (Date.now() - last > s.idleStopHours * 3600_000) {
 			console.log(`stopping idle sandbox ${s.name}`)
+			await store.setStoppedReason(s.name, { reason: 'idle', hours: s.idleStopHours, at: new Date().toISOString() })
 			await dk.stop(s.name).catch(() => {})
 		}
 	}
@@ -58,7 +59,8 @@ async function describe(s: store.SandboxConfig) {
 	const failed = container.exists && !container.running && container.exitCode !== 0
 	const failure = failed ? await dk.failureReason(s.name) : ''
 	const outdated = container.running && Boolean(imageId) && container.imageId !== imageId
-	return { ...s, lanPort: store.lanPort(s), hasToken, container, failure, outdated, status: container.running ? status : null }
+	const stoppedReason = container.running ? null : await store.readStoppedReason(s.name)
+	return { ...s, lanPort: store.lanPort(s), hasToken, container, failure, outdated, stoppedReason, status: container.running ? status : null }
 }
 
 app.get('/api/sandboxes', async () => json(await Promise.all((await store.readAll()).map(describe))))
@@ -86,6 +88,7 @@ app.post('/api/sandboxes/:name/start', async (c) => {
 	try {
 		const s = (await store.readAll()).find((x) => x.name === c.req.param('name'))
 		if (!s) return json({ error: 'Unknown sandbox' }, 404)
+		await store.setStoppedReason(s.name, null)
 		await dk.start(s)
 		return json(await describe(s))
 	} catch (e) {
@@ -131,6 +134,16 @@ app.delete('/api/sandboxes/:name', async (c) => {
 })
 
 app.get('/api/sandboxes/:name/logs', async (c) => c.text(await dk.logs(c.req.param('name'))))
+
+// Thumbnail of the running project (written by sandbox-thumb-loop).
+app.get('/api/sandboxes/:name/preview.png', async (c) => {
+	try {
+		const buf = await fs.readFile(path.join(config.dataDir, '.manager', c.req.param('name'), 'preview.png'))
+		return new Response(buf, { headers: { 'content-type': 'image/png', 'cache-control': 'no-cache' } })
+	} catch {
+		return c.text('', 404)
+	}
+})
 
 // Output of the project's dev server (written by sandbox-dev-start).
 app.get('/api/sandboxes/:name/dev-log', async (c) => {

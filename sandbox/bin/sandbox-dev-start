@@ -46,6 +46,7 @@ if [ -n "$cmd" ]; then
 	if port="$(wait_for_port 90)"; then
 		write_state upstream-port "$port"
 		sandbox-caddy-reload >/dev/null 2>&1 || true
+		rm -f "$(state_file preview.png)"   # the thumbnail loop shoots a fresh one
 		sandbox-status-write
 		echo "dev server listens on port $port, preview: $SANDBOX_PREVIEW_URL"
 		exit 0

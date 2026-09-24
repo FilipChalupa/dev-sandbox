@@ -18,7 +18,7 @@ export type SandboxConfig = {
 	createdAt: string
 }
 
-export const defaults = { memoryGb: 4, cpus: 2, idleStopHours: 4, lanPreview: false }
+export const defaults = { memoryGb: 4, cpus: 2, idleStopHours: 4, lanPreview: true }
 
 const file = () => managerDir('sandboxes.json')
 
@@ -163,6 +163,20 @@ export async function hasToken(name: string) {
 		return (await fs.stat(managerDir(name, 'git-token'))).size > 0
 	} catch {
 		return false
+	}
+}
+
+export type StoppedReason = { reason: 'idle'; hours: number; at: string }
+export async function setStoppedReason(name: string, r: StoppedReason | null) {
+	const f = managerDir(name, 'stopped-reason.json')
+	if (r) await fs.writeFile(f, JSON.stringify(r))
+	else await fs.rm(f, { force: true })
+}
+export async function readStoppedReason(name: string): Promise<StoppedReason | null> {
+	try {
+		return JSON.parse(await fs.readFile(managerDir(name, 'stopped-reason.json'), 'utf8'))
+	} catch {
+		return null
 	}
 }
 

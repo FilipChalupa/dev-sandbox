@@ -26,6 +26,7 @@ if tunnel_running; then tunnel="$(tunnel_url)"; else tunnel=""; fi
 if grep -qx "$(upstream_port)" <<<"$(sandbox-ports)"; then dev_up=true; else dev_up=false; fi
 if tmux has-session -t claude 2>/dev/null; then tmux_up=true; else tmux_up=false; fi
 if curl -fs -o /dev/null http://localhost:2019/config/ 2>/dev/null; then caddy_up=true; else caddy_up=false; fi
+thumb_at=0; [ -f "$(state_file preview.png)" ] && thumb_at="$(stat -c %Y "$(state_file preview.png)")"
 # Activity: Claude appends to a session transcript whenever it works. The
 # server's own terminal output changes even when idle and the git index is
 # touched by every start, so neither counts.
@@ -53,6 +54,7 @@ jq -n \
 	--argjson devUp "$dev_up" \
 	--argjson tmuxUp "$tmux_up" \
 	--argjson caddyUp "$caddy_up" \
+	--argjson thumbAt "$thumb_at" \
 	--argjson lastActivity "$activity" \
 	--argjson dirty "${dirty:-0}" \
 	--argjson ahead "${ahead:-0}" \
@@ -64,7 +66,7 @@ jq -n \
 		name: $name,
 		git: { branch: $branch, remote: $remote, dirty: $dirty, ahead: $ahead, lastCommit: $last, today: $today, changed: $changed, shortstat: $shortstat },
 		claude: { loggedIn: $loggedIn, email: $email, serverRunning: $running, supervisorRunning: $tmuxUp, sessionUrl: $session },
-		preview: { url: $preview, upstreamPort: ($port | tonumber), devServerUp: $devUp, proxyUp: $caddyUp, tunnelUrl: $tunnel, user: $user, password: $pw },
+		preview: { url: $preview, upstreamPort: ($port | tonumber), devServerUp: $devUp, proxyUp: $caddyUp, imageAt: (if $thumbAt > 0 then ($thumbAt | todate) else "" end), tunnelUrl: $tunnel, user: $user, password: $pw },
 		lastActivity: (if $lastActivity > 0 then ($lastActivity | todate) else "" end),
 		updatedAt: (now | todate)
 	}'

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Keeps a small screenshot of the running project for the manager's card:
+# a fresh one whenever the dev server is up and the last shot is older than
+# three minutes (or missing).
+source sandbox-lib
+while true; do
+	if grep -qx "$(upstream_port)" <<<"$(sandbox-ports)"; then
+		img="$(state_file preview.png)"
+		age=999999
+		[ -f "$img" ] && age=$(( $(date +%s) - $(stat -c %Y "$img") ))
+		if [ "$age" -gt 180 ]; then
+			tmp="$(state_file preview-new.png)"
+			rm -f "$tmp"
+			# Chromium exits non-zero over a missing D-Bus even when the shot
+			# succeeded, so only the file counts.
+			chromium --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars \
+				--window-size=1024,640 --virtual-time-budget=5000 --screenshot="$tmp" \
+				"http://127.0.0.1:$(upstream_port)/" >/dev/null 2>&1 || true
+			if [ -s "$tmp" ]; then
+				mv "$tmp" "$img"
+				sandbox-status-write
+			fi
+			rm -f "$tmp"
+		fi
+	fi
+	sleep 30
+done

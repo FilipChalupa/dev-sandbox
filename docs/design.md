@@ -113,6 +113,12 @@ UI:
 - clicking the project folder opens it in Finder through the host helper
   (a request file it executes with `open`); without the helper the path is
   copied to the clipboard,
+- a thumbnail of the running site on the card (the sandbox screenshots it
+  every few minutes), "message for the developer" after a push, "stopped
+  after N h idle" instead of a bare "stopped", browser notifications when a
+  sandbox needs the person, a web app manifest so the manager can be added
+  to the Dock, and a form that asks for the repository first and derives the
+  name from it,
 - English and Czech, switchable.
 
 ### Sandbox container

@@ -120,6 +120,7 @@ start_service caddy "exec caddy run --config $(state_file Caddyfile) >> $(state_
 [ "${SANDBOX_AUTOSAVE_MINUTES:-10}" != "0" ] && start_service autosave "exec sandbox-autosave >> $(state_file autosave.log) 2>&1"
 start_service status "exec sandbox-status-loop"
 start_service ports "exec sandbox-port-watch >> $(state_file port-watch.log) 2>&1"
+start_service thumb "exec sandbox-thumb-loop >> $(state_file thumb.log) 2>&1"
 sandbox-claude-start >/dev/null
 
 log "sandbox '$SANDBOX_NAME' is up; preview password for user '$SANDBOX_PREVIEW_USER' is in $(state_file preview-password)"

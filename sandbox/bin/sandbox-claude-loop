@@ -15,6 +15,10 @@ while true; do
 	fi
 	sandbox-git-identity >/dev/null 2>&1 || true
 	echo "Starting Claude Remote Control server for '$SANDBOX_NAME'…"
+	# The log is where the session link is read from; drop the previous
+	# server's link so the UI never points at an old environment.
+	: > "$(state_file claude.log)"
+	sandbox-status-write >/dev/null 2>&1 || true
 	claude remote-control \
 		--name "$SANDBOX_NAME" \
 		--permission-mode bypassPermissions \

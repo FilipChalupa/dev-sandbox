@@ -37,6 +37,7 @@ type Modal =
 	| { kind: 'login'; name: string }
 	| { kind: 'delete'; s: Sandbox }
 	| { kind: 'reset'; s: Sandbox }
+	| { kind: 'devmsg'; name: string }
 	| { kind: 'diagnostics' }
 	| { kind: 'changes'; name: string }
 	| { kind: 'qr'; text: string; title: string }
@@ -127,6 +128,43 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 		history.replaceState(null, '', location.pathname)
 	}, [])
 
+	// Browser notifications when something starts waiting for the person and
+	// the page is not in front. Opt-in through the gear menu.
+	const [notify, setNotify] = useState(() => {
+		try {
+			return localStorage.getItem('sandbox-manager.notify') === '1' && typeof Notification !== 'undefined' && Notification.permission === 'granted'
+		} catch {
+			return false
+		}
+	})
+	const toggleNotify = async () => {
+		if (notify) {
+			setNotify(false)
+			try { localStorage.setItem('sandbox-manager.notify', '0') } catch {}
+			return
+		}
+		if (typeof Notification === 'undefined') return
+		const perm = await Notification.requestPermission()
+		if (perm === 'granted') {
+			setNotify(true)
+			try { localStorage.setItem('sandbox-manager.notify', '1') } catch {}
+			toast('ok', t('notificationsOn'))
+		} else toast('error', t('notificationsDenied'))
+	}
+	const seen = useMemo(() => new Map<string, string>(), [])
+	useEffect(() => {
+		if (!list) return
+		for (const s of list) {
+			const state = s.failure ? 'failed' : s.container.running && s.status && !s.status.claude.loggedIn ? 'login' : ''
+			const prev = seen.get(s.name)
+			seen.set(s.name, state)
+			if (!notify || !state || prev === undefined || prev === state || document.visibilityState === 'visible') continue
+			try {
+				new Notification(t('title'), { body: state === 'failed' ? t('notifyFailed', { name: s.name }) : t('notifyLogin', { name: s.name }), icon: '/icon.svg' })
+			} catch {}
+		}
+	}, [list, notify])
+
 	// Title and favicon say when something waits for the person.
 	const attention = useMemo(() => (list ?? []).some((s) => stageOf(s).attention), [list])
 	useEffect(() => {
@@ -208,6 +246,9 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 							{ label: t('updateManager'), icon: 'restart', onClick: updateManager, badge: updates?.manager?.updateAvailable },
 							{ label: t('diagnostics'), icon: 'stethoscope', onClick: () => setModal({ kind: 'diagnostics' }) },
 							{ label: t('prune'), icon: 'trash', onClick: () => run(async () => { const r = await api.prune(); toast('ok', r.removed ? t('pruned', { mb: r.freedMb, n: r.removed }) : t('prunedNothing')) }) },
+							'sep',
+							{ label: `${t('notifications')}${notify ? ' ✓' : ''}`, icon: 'alert', onClick: toggleNotify },
+							{ label: t('installApp'), icon: 'phone', onClick: () => toast('info', t('installAppHint')) },
 							'sep',
 							{ label: t('logoutClaude'), icon: 'login', danger: true, onClick: () => setModal({ kind: 'logout' }) },
 							'sep',
@@ -306,6 +347,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 					</div>
 				</Modal>
 			)}
+			{modal?.kind === 'devmsg' && <DevMessage s={list?.find((x) => x.name === modal.name)} name={modal.name} onClose={close} />}
 			{modal?.kind === 'reset' && (
 				<Modal title={<><Icon name="restart" /> {t('resetTitle')}</>} onClose={close}>
 					<p>{t('resetText', { name: modal.s.name })}</p>
@@ -482,6 +524,12 @@ function repoLinks(repoUrl: string, branch: string, sha: string) {
 	}
 }
 
+// "https://bitbucket.org/ws/my-site.git" → "my-site"
+function nameFromRepo(url: string) {
+	const last = url.trim().replace(/\/+$/, '').split(/[/:]/).pop() ?? ''
+	return last.replace(/\.git$/, '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
+}
+
 // Which desktop OS the browser runs on (for wording such as Finder vs Explorer).
 function detectPlatform(): 'mac' | 'win' | 'other' {
 	const hint = ((navigator as any).userAgentData?.platform as string | undefined) ?? ''
@@ -534,6 +582,7 @@ function SandboxCard({ s, usage, host, lang, lanHost, lanHosts, onLanHost, run, 
 				try {
 					const r = await api.save(s.name, false)
 					toast('ok', `${t('sent')} (${r.output.split('\n').pop()})`)
+					if (/pushed/.test(r.output)) setModal({ kind: 'devmsg', name: s.name })
 				} catch (e) {
 					const msg = e instanceof Error ? e.message : String(e)
 					if (/CHECK FAILED/.test(msg)) setModal({ kind: 'sendAnyway', name: s.name, output: msg })
@@ -561,6 +610,7 @@ function SandboxCard({ s, usage, host, lang, lanHost, lanHosts, onLanHost, run, 
 
 	const statusPill =
 		!running && s.failure ? <Pill tone="error">{t('failed')}</Pill>
+		: !running && s.stoppedReason ? <Pill tone="off">{t('stoppedIdle', { hours: s.stoppedReason.hours })}</Pill>
 		: !running ? <Pill tone="off">{t('stopped')}</Pill>
 		: stage.starting ? <Pill tone="warn" pulse>{t('starting')}</Pill>
 		: stage.attention ? <Pill tone="warn">{t('needsLogin')}</Pill>
@@ -570,13 +620,15 @@ function SandboxCard({ s, usage, host, lang, lanHost, lanHosts, onLanHost, run, 
 	const primary =
 		!running ? <button className="primary" onClick={() => run(() => api.start(s.name))}><Icon name="play" /> {t('start')}</button>
 		: stage.attention ? <button className="primary" onClick={() => setModal({ kind: 'login', name: s.name })}><Icon name="login" /> {t('loginClaude')}</button>
-		: st ? <a className="button primary" href={st.claude.sessionUrl || 'https://claude.ai/code'} target="_blank" rel="noreferrer"><Icon name="external" /> {t('openClaude')}</a>
+		: st && st.claude.sessionUrl ? <a className="button primary" href={st.claude.sessionUrl} target="_blank" rel="noreferrer"><Icon name="external" /> {t('openClaude')}</a>
+		: st ? <button className="primary" disabled><Spinner /> {t('connecting')}</button>
 		: null
 
 	const menuItems = [
 		...(running ? [{ label: t('stop'), icon: 'stop', onClick: () => run(() => api.stop(s.name)) }] : []),
 		{ label: t('edit'), icon: 'settings', onClick: () => setModal({ kind: 'edit', s }) },
 		{ label: t('changesToday'), icon: 'history', onClick: () => setModal({ kind: 'changes', name: s.name }), disabled: !running },
+		{ label: t('devMessage'), icon: 'send', onClick: () => setModal({ kind: 'devmsg', name: s.name }), disabled: !s.repoUrl },
 		{ label: t('devStop'), icon: 'stop', onClick: () => action('dev-stop'), disabled: !(running && st?.preview.devServerUp) },
 		{ label: t('devLog'), icon: 'log', onClick: () => setModal({ kind: 'devlog', name: s.name }), disabled: !running },
 		'sep' as const,
@@ -642,6 +694,9 @@ function SandboxCard({ s, usage, host, lang, lanHost, lanHosts, onLanHost, run, 
 						{running && usage && <span title={t('memoryLimits')}>{t('usage', { cpu: usage.cpuPercent, mem: (usage.memMb / 1024).toFixed(1), limit: (usage.memLimitMb / 1024).toFixed(0) })}</span>}
 					</div>
 
+					{!running && !s.failure && s.stoppedReason && (
+						<p className="hint">{t('stoppedIdleText', { hours: s.stoppedReason.hours, when: new Date(s.stoppedReason.at).toLocaleString(lang) })}</p>
+					)}
 					{!running && s.failure && (
 						<div className="failure">
 							<div className="failure-title"><Icon name="alert" /> {t('failureReason')}</div>
@@ -659,6 +714,11 @@ function SandboxCard({ s, usage, host, lang, lanHost, lanHosts, onLanHost, run, 
 
 					{stage.step === 3 && st && (
 						<>
+							{st.preview.imageAt && (
+								<a className="thumb" href={st.preview.url} target="_blank" rel="noreferrer" title={t('previewThumb')}>
+									<img src={`/api/sandboxes/${s.name}/preview.png?t=${encodeURIComponent(st.preview.imageAt)}`} alt={t('previewThumb')} />
+								</a>
+							)}
 							<div className="links">
 								<a className="button" href={st.preview.url} target="_blank" rel="noreferrer"><Icon name="globe" /> {t('openPreview')}</a>
 								{st.preview.tunnelUrl ? (
@@ -813,6 +873,26 @@ function Logs({ name, onClose }: { name: string; onClose: () => void }) {
 	)
 }
 
+function DevMessage({ s, name, onClose }: { s?: Sandbox; name: string; onClose: () => void }) {
+	const t = useT()
+	const g = s?.status?.git
+	const branch = g?.branch || s?.branch || ''
+	const links = repoLinks(s?.repoUrl ?? '', branch, g?.lastCommit?.split(' ')[0] ?? '')
+	const [text, setText] = useState(() =>
+		t('devMessageText', { name, branch, link: links.branch ? ` (${links.branch})` : '', commit: g?.lastCommit || '-' }),
+	)
+	return (
+		<Modal title={<><Icon name="send" /> {t('devMessage')}</>} onClose={onClose}>
+			<p className="muted small">{t('devMessageHint')}</p>
+			<textarea value={text} onChange={(e) => setText(e.target.value)} rows={5} />
+			<div className="actions">
+				<button onClick={onClose}>{t('close')}</button>
+				<Copy text={text} label={t('copy')} />
+			</div>
+		</Modal>
+	)
+}
+
 function Changes({ s, name, onClose }: { s?: Sandbox; name: string; onClose: () => void }) {
 	const t = useT()
 	const g = s?.status?.git
@@ -936,7 +1016,13 @@ function DeleteDialog({ s, onCancel, onConfirm }: { s: Sandbox; onCancel: () => 
 
 function SandboxForm({ existing, initial, onSubmit, onCancel }: { existing?: Sandbox; initial?: Partial<Sandbox> & { token?: string }; onSubmit: (body: object) => Promise<void>; onCancel: () => void }) {
 	const t = useT()
-	const [name, setName] = useState(existing?.name ?? initial?.name ?? '')
+	const [name, setName] = useState(existing?.name ?? initial?.name ?? nameFromRepo(initial?.repoUrl ?? ''))
+	const [nameTouched, setNameTouched] = useState(Boolean(existing || initial?.name))
+	// The name follows the repository until the person edits it.
+	const onRepoUrl = (v: string) => {
+		setRepoUrl(v)
+		if (!nameTouched) setName(nameFromRepo(v))
+	}
 	const [repoUrl, setRepoUrl] = useState(existing?.repoUrl ?? initial?.repoUrl ?? '')
 	const [token, setToken] = useState(initial?.token ?? '')
 	const [branch, setBranch] = useState(existing?.branch ?? initial?.branch ?? '')
@@ -944,11 +1030,17 @@ function SandboxForm({ existing, initial, onSubmit, onCancel }: { existing?: San
 	const [memoryGb, setMemoryGb] = useState(existing?.memoryGb ?? 4)
 	const [cpus, setCpus] = useState(existing?.cpus ?? 2)
 	const [idleStopHours, setIdleStopHours] = useState(existing?.idleStopHours ?? 4)
-	const [lanPreview, setLanPreview] = useState(existing?.lanPreview ?? false)
+	const [lanPreview, setLanPreview] = useState(existing?.lanPreview ?? true)
 	const [instructions, setInstructions] = useState(existing?.instructions ?? initial?.instructions ?? '')
 	const [startNow, setStartNow] = useState(true)
 	const [busy, setBusy] = useLocalLoading()
 	const [check, setCheck] = useState<{ state: 'idle' | 'busy' | 'ok' | 'fail'; branches: string[]; error: string }>({ state: 'idle', branches: [], error: '' })
+	// Check access on its own once both fields have settled.
+	useEffect(() => {
+		if (!repoUrl || (!token && !existing?.hasToken && !/@/.test(repoUrl))) return
+		const id = setTimeout(doCheck, 900)
+		return () => clearTimeout(id)
+	}, [repoUrl, token])
 	const doCheck = async () => {
 		if (!repoUrl) return
 		setCheck({ state: 'busy', branches: [], error: '' })
@@ -985,16 +1077,9 @@ function SandboxForm({ existing, initial, onSubmit, onCancel }: { existing?: San
 	return (
 		<Modal title={existing ? <><Icon name="settings" /> {t('edit')}: {existing.name}</> : <><Icon name="plus" /> {t('newSandbox')}</>} onClose={onCancel}>
 			<form onSubmit={submit} className="form">
-				{!existing && (
-					<label>
-						{t('name')}
-						<input value={name} onChange={(e) => setName(e.target.value.toLowerCase())} required pattern="[a-z0-9][a-z0-9-]*" autoFocus className={name && !nameOk ? 'invalid' : ''} />
-						<small>{t('nameHint')}</small>
-					</label>
-				)}
 				<label>
 					{t('repoUrl')}
-					<input value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder="https://bitbucket.org/workspace/repo.git" />
+					<input value={repoUrl} onChange={(e) => onRepoUrl(e.target.value)} placeholder="https://bitbucket.org/workspace/repo.git" autoFocus={!existing} />
 					<small>{t('repoHint')} {t('repoHintToken')}</small>
 				</label>
 				<label>
@@ -1002,6 +1087,13 @@ function SandboxForm({ existing, initial, onSubmit, onCancel }: { existing?: San
 					<input value={token} onChange={(e) => setToken(e.target.value)} type="password" placeholder={existing?.hasToken ? '••••••••' : ''} />
 					<small>{existing?.hasToken ? t('tokenSet') : t('tokenHint')}</small>
 				</label>
+				{!existing && (
+					<label>
+						{t('name')}
+						<input value={name} onChange={(e) => { setName(e.target.value.toLowerCase()); setNameTouched(true) }} required pattern="[a-z0-9][a-z0-9-]*" className={name && !nameOk ? 'invalid' : ''} />
+						<small>{t('nameHint')}</small>
+					</label>
+				)}
 				<label>
 					{t('branch')}
 					<input value={branch} onChange={(e) => setBranch(e.target.value)} placeholder={`sandbox/${name || 'name'}`} />
