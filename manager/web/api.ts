@@ -37,7 +37,7 @@ export type LoginState = { url: string; done: boolean; success: boolean; error: 
 async function call<T>(method: string, url: string, body?: unknown): Promise<T> {
 	const res = await fetch(url, {
 		method,
-		headers: body ? { 'content-type': 'application/json' } : undefined,
+		headers: { 'x-sandbox-manager': '1', ...(body ? { 'content-type': 'application/json' } : {}) },
 		body: body ? JSON.stringify(body) : undefined,
 	})
 	const text = await res.text()
@@ -70,6 +70,9 @@ export const api = {
 	devLog: (name: string) => fetch(`/api/sandboxes/${name}/dev-log`).then((r) => r.text()),
 	stats: () => call<Record<string, { cpuPercent: number; memMb: number; memLimitMb: number } | null>>('GET', '/api/stats'),
 	prune: () => call<{ removed: number; freedMb: number }>('POST', '/api/prune'),
+	doctor: (name: string) => call<{ checks: { check: string; ok: boolean; detail: string }[] }>('POST', `/api/sandboxes/${name}/doctor`),
+	backup: () => call<unknown>('GET', '/api/backup'),
+	restore: (data: unknown) => call<{ added: number; skipped: string[] }>('POST', '/api/restore', data),
 	openFolder: (name: string) => call<{ opened: boolean; path: string }>('POST', `/api/sandboxes/${name}/open-folder`),
 	login: {
 		status: (name: string) => call<LoginState | null>('GET', `/api/sandboxes/${name}/login`),

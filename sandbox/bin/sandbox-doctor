@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Checks the things that usually go wrong and prints one JSON line per check:
+# {"check":"…","ok":true|false,"detail":"…"}
+set -uo pipefail
+source sandbox-lib
+cd "$SANDBOX_WORKSPACE" 2>/dev/null || true
+say() { jq -n -c --arg c "$1" --argjson ok "$2" --arg d "$3" '{check:$c, ok:$ok, detail:$d}'; }
+
+if claude_logged_in; then say login true "$(claude auth status 2>/dev/null | jq -r '.email // ""')"; else say login false "not logged in"; fi
+
+if pgrep -f 'claude remote-control' >/dev/null; then say claudeServer true "$(session_url)"; else say claudeServer false "server not running"; fi
+
+if curl -fs -o /dev/null http://localhost:2019/config/; then say proxy true "Caddy up, upstream $(upstream_port)"; else say proxy false "Caddy not answering"; fi
+
+ports="$(sandbox-ports | tr '\n' ' ')"
+if grep -qw "$(upstream_port)" <<<"$ports"; then say devServer true "listening on $(upstream_port)"; else say devServer false "nothing on $(upstream_port); listening: ${ports:-none}"; fi
+
+if [ -d .git ]; then
+	if git remote get-url origin >/dev/null 2>&1; then
+		if out="$(GIT_TERMINAL_PROMPT=0 timeout 20 git ls-remote --exit-code --heads origin 2>&1)"; then
+			say remote true "reachable, $(wc -l <<<"$out" | tr -d ' ') branches"
+		else
+			say remote false "$(tail -n 1 <<<"$out")"
+		fi
+	else
+		say remote true "no remote configured"
+	fi
+	if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ] || [ -f .git/MERGE_HEAD ]; then say gitState false "merge or rebase in progress"; else say gitState true "on $(git branch --show-current)"; fi
+	if git config user.email >/dev/null 2>&1; then say identity true "$(git config user.name) <$(git config user.email)>"; else say identity false "no commit identity yet"; fi
+else
+	say remote false "not a git repository"
+fi
+
+free_kb="$(df -Pk "$SANDBOX_WORKSPACE" | awk 'NR==2 {print $4}')"
+if [ "${free_kb:-0}" -gt 1048576 ]; then say disk true "$((free_kb / 1024 / 1024)) GB free"; else say disk false "only $((free_kb / 1024)) MB free"; fi
+
+if command -v playwright-mcp >/dev/null && [ -x /usr/bin/chromium ]; then say browser true "Chromium + Playwright MCP"; else say browser false "browser tools missing"; fi
+
+if tunnel_running; then say tunnel true "$(tunnel_url)"; else say tunnel true "not shared"; fi
+
+say node true "$(node --version)$( [ -f .nvmrc ] && printf ', .nvmrc %s' "$(tr -d '[:space:]' < .nvmrc)")"

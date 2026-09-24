@@ -38,6 +38,7 @@ type Modal =
 	| { kind: 'delete'; s: Sandbox }
 	| { kind: 'reset'; s: Sandbox }
 	| { kind: 'devmsg'; name: string }
+	| { kind: 'doctor'; name: string }
 	| { kind: 'diagnostics' }
 	| { kind: 'changes'; name: string }
 	| { kind: 'qr'; text: string; title: string }
@@ -275,6 +276,32 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 							{ label: t('diagnostics'), icon: 'stethoscope', onClick: () => setModal({ kind: 'diagnostics' }) },
 							{ label: t('prune'), icon: 'trash', onClick: () => run(async () => { const r = await api.prune(); toast('ok', r.removed ? t('pruned', { mb: r.freedMb, n: r.removed }) : t('prunedNothing')) }) },
 							'sep',
+							{ label: t('backup'), icon: 'log', onClick: async () => {
+								try {
+									const data = await api.backup()
+									const blob = new Blob([JSON.stringify(data, null, '\t')], { type: 'application/json' })
+									const a = document.createElement('a')
+									a.href = URL.createObjectURL(blob)
+									a.download = `sandboxes-backup-${new Date().toISOString().slice(0, 10)}.json`
+									a.click()
+									URL.revokeObjectURL(a.href)
+								} catch (e) { toast('error', String(e)) }
+							} },
+							{ label: t('restore'), icon: 'restart', onClick: () => {
+								const input = document.createElement('input')
+								input.type = 'file'
+								input.accept = 'application/json'
+								input.onchange = async () => {
+									const f = input.files?.[0]
+									if (!f) return
+									await run(async () => {
+										const r = await api.restore(JSON.parse(await f.text()))
+										toast('ok', t('restored', { added: r.added, skipped: r.skipped.join(', ') || '-' }))
+									})
+								}
+								input.click()
+							} },
+							'sep',
 							{ label: `${t('notifications')}${notify ? ' ✓' : ''}`, icon: 'alert', onClick: toggleNotify },
 							{ label: t('installApp'), icon: 'phone', onClick: () => toast('info', t('installAppHint')) },
 							'sep',
@@ -364,7 +391,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 			{modal?.kind === 'qr' && (
 				<Modal title={modal.title} onClose={close} className="qr-modal">
 					<Qr text={modal.text} size={640} />
-					<p className="muted small">{t('qrContains')}</p>
+					<p className="muted small">{/claude\.ai/.test(modal.text) ? t('sessionQrHint') : t('qrContains')}</p>
 					<div className="access-row"><span className="k" /><code className="v">{modal.text}</code><Copy text={modal.text} /></div>
 				</Modal>
 			)}
@@ -388,6 +415,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 					</div>
 				</Modal>
 			)}
+			{modal?.kind === 'doctor' && <Doctor name={modal.name} onClose={close} />}
 			{modal?.kind === 'devmsg' && <DevMessage s={list?.find((x) => x.name === modal.name)} name={modal.name} onClose={close} />}
 			{modal?.kind === 'reset' && (
 				<Modal title={<><Icon name="restart" /> {t('resetTitle')}</>} onClose={close}>
@@ -663,7 +691,12 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 	const primary =
 		!running ? <button className="primary" autoFocus={focus} onClick={() => run(async () => { const r = await api.start(s.name); if (r.portNote) toast('info', t('portMoved', r.portNote)) })}><Icon name="play" /> {t('start')}</button>
 		: stage.attention ? <button className="primary" autoFocus={focus} onClick={() => setModal({ kind: 'login', name: s.name })}><Icon name="login" /> {t('loginClaude')}</button>
-		: st && st.claude.sessionUrl ? <a className="button primary" autoFocus={focus} href={st.claude.sessionUrl} target="_blank" rel="noreferrer"><Icon name="external" /> {t('openClaude')}</a>
+		: st && st.claude.sessionUrl ? (
+			<>
+				<a className="button primary" autoFocus={focus} href={st.claude.sessionUrl} target="_blank" rel="noreferrer"><Icon name="external" /> {t('openClaude')}</a>
+				<button className="icon-btn" title={t('sessionQr')} onClick={() => setModal({ kind: 'qr', text: st.claude.sessionUrl, title: t('sessionQr') })}><Icon name="qr" /></button>
+			</>
+		)
 		: st ? <button className="primary" disabled><Spinner /> {t('connecting')}</button>
 		: null
 
@@ -674,6 +707,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 		{ label: t('devMessage'), icon: 'send', onClick: () => setModal({ kind: 'devmsg', name: s.name }), disabled: !s.repoUrl },
 		{ label: t('devStop'), icon: 'stop', onClick: () => action('dev-stop'), disabled: !(running && st?.preview.devServerUp) },
 		{ label: t('devLog'), icon: 'log', onClick: () => setModal({ kind: 'devlog', name: s.name }), disabled: !running },
+		{ label: t('doctor'), icon: 'stethoscope', onClick: () => setModal({ kind: 'doctor', name: s.name }), disabled: !running },
 		'sep' as const,
 		{ label: t('terminal'), icon: 'terminal', onClick: () => setModal({ kind: 'terminal', name: s.name, cmd: 'shell' }), disabled: !running },
 		{ label: t('restartClaude'), icon: 'restart', onClick: () => action('restart-claude'), disabled: !running },
@@ -918,6 +952,37 @@ function Logs({ name, onClose }: { name: string; onClose: () => void }) {
 	return (
 		<Modal title={<><Icon name="log" /> {t('logs')}: {name} <span className="muted small">({t('logLive')})</span></>} onClose={onClose} wide>
 			<pre ref={setEl} className="logs">{text || '…'}</pre>
+		</Modal>
+	)
+}
+
+function Doctor({ name, onClose }: { name: string; onClose: () => void }) {
+	const t = useT()
+	const [checks, setChecks] = useState<{ check: string; ok: boolean; detail: string }[] | null>(null)
+	const [err, setErr] = useState('')
+	useMirrorLoading(!checks && !err)
+	useEffect(() => {
+		api.doctor(name).then((r) => setChecks(r.checks)).catch((e) => setErr(humanizeError(String(e), t)))
+	}, [name])
+	const label = (c: string) => {
+		const key = `check${c[0].toUpperCase()}${c.slice(1)}` as Parameters<typeof t>[0]
+		try { return t(key) } catch { return c }
+	}
+	return (
+		<Modal title={<><Icon name="stethoscope" /> {t('doctorTitle')}: {name}</>} onClose={onClose}>
+			{err && <p className="error">{err}</p>}
+			{!checks && !err && <p>{t('loading')}</p>}
+			{checks && (
+				<ul className="checks">
+					{checks.map((c) => (
+						<li key={c.check} className={c.ok ? 'ok' : 'bad'}>
+							<Icon name={c.ok ? 'check' : 'alert'} />
+							<span className="k">{label(c.check)}</span>
+							<span className="muted">{c.detail}</span>
+						</li>
+					))}
+				</ul>
+			)}
 		</Modal>
 	)
 }

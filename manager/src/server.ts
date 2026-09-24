@@ -27,6 +27,24 @@ const action = (cmd: string[]) => async (c: any) => {
 
 const app = new Hono()
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app })
+
+// The manager has no login: it trusts whoever reaches localhost. A web page
+// in the same browser could send requests here too, so a change must carry a
+// header only our own page adds (a cross-origin page cannot without a CORS
+// preflight, which we never approve), and any Origin present must be ours.
+function sameOrigin(c: { req: { header: (n: string) => string | undefined } }) {
+	const origin = c.req.header('origin')
+	if (!origin) return true // same-origin fetches and curl send none
+	const host = c.req.header('host') ?? ''
+	return origin === `http://${host}` || origin === `https://${host}`
+}
+app.use('/api/*', async (c, next) => {
+	if (!sameOrigin(c)) return c.text('forbidden origin', 403)
+	if (c.req.method !== 'GET' && c.req.method !== 'HEAD' && c.req.header('x-sandbox-manager') !== '1') {
+		return c.text('missing X-Sandbox-Manager header', 403)
+	}
+	await next()
+})
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public')
 
 const json = (data: unknown, status = 200) => Response.json(data, { status })
@@ -274,6 +292,47 @@ app.post('/api/sandboxes/:name/open-folder', async (c) => {
 	if (!(await store.readAll()).some((s) => s.name === name)) return json({ error: 'Unknown sandbox' }, 404)
 	const hostPath = path.posix.join(config.hostDir, name)
 	return json({ opened: await openOnHost(hostPath), path: hostPath })
+})
+
+// Health checks run inside the sandbox (sandbox-doctor prints JSON lines).
+app.post('/api/sandboxes/:name/doctor', async (c) => {
+	try {
+		const r = await dk.run(c.req.param('name'), ['sandbox-doctor'], 60_000)
+		const checks = r.output.split('\n').filter((l) => l.startsWith('{')).map((l) => JSON.parse(l))
+		return json({ checks })
+	} catch (e) {
+		return fail(e)
+	}
+})
+
+// Backup of everything that is not in git: configs, tokens, instructions.
+app.get('/api/backup', async () => {
+	const sandboxes = []
+	for (const s of await store.readAll()) {
+		sandboxes.push({ ...s, token: await store.readToken(s.name) })
+	}
+	return json({ format: 'dev-sandbox-backup', version: 1, exportedAt: new Date().toISOString(), settings: await store.readSettings(), sandboxes })
+})
+
+app.post('/api/restore', async (c) => {
+	try {
+		const data = await c.req.json()
+		if (data?.format !== 'dev-sandbox-backup') return json({ error: 'not a sandbox backup' }, 400)
+		const existing = new Set((await store.readAll()).map((s) => s.name))
+		let added = 0
+		const skipped: string[] = []
+		for (const b of data.sandboxes ?? []) {
+			if (!b?.name) continue
+			if (existing.has(b.name)) { skipped.push(b.name); continue }
+			const { hostPort, createdAt, token, ...rest } = b
+			await store.create({ ...rest, token })
+			added++
+		}
+		if (data.settings?.timeZone) await store.writeSettings({ timeZone: data.settings.timeZone })
+		return json({ added, skipped })
+	} catch (e) {
+		return fail(e)
+	}
 })
 
 app.post('/api/check-repo', async (c) => {

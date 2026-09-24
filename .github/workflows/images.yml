@@ -31,8 +31,17 @@ jobs:
       - run: bash sandbox/test/run.sh
       - run: bash -n sandbox/bin/* sandbox/hooks/* installer/*.sh
 
-  build:
+  e2e:
     needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t dev-sandbox sandbox
+      - run: docker build -t dev-sandbox-manager manager
+      - run: mkdir -p /tmp/sandboxes && bash scripts/e2e.sh docker dev-sandbox dev-sandbox-manager /tmp/sandboxes
+
+  build:
+    needs: [test, e2e]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     strategy:

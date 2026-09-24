@@ -212,6 +212,14 @@ export async function setToken(name: string, token: string) {
 	else await fs.rm(f, { force: true })
 }
 
+export async function readToken(name: string) {
+	try {
+		return await fs.readFile(managerDir(name, 'git-token'), 'utf8')
+	} catch {
+		return ''
+	}
+}
+
 export async function hasToken(name: string) {
 	try {
 		return (await fs.stat(managerDir(name, 'git-token'))).size > 0

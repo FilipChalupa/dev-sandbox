@@ -65,6 +65,8 @@ can start sessions in it. Status for the manager is in `/state/status.json`.
 - `sandbox-screenshot [path|url] [out.png] [--mobile]`: render the preview with
   headless Chromium (for Claude to check its work).
 - `sandbox-status`: print the status JSON.
+- `sandbox-doctor`: one JSON line per health check (login, server, proxy, dev
+  server, git remote, identity, disk, browser tools).
 - `sandbox-claude-start`: restart the Claude Remote Control server.
 - `sandbox-node-prepare`: install the Node version from `.nvmrc`,
   `.node-version` or `engines.node` (runs at start).

@@ -142,6 +142,12 @@ UI:
 - rename (folders, state and transcripts move; the container is recreated),
   drag-and-drop order of the cards, the person's time zone passed to the
   sandboxes as `TZ`, and "Copy report" in diagnostics for support requests,
+- "Check sandbox" runs `sandbox-doctor` inside (login, server, proxy, dev
+  server, git remote reachability with the token, identity, disk, browser
+  tools) and lists the results,
+- "Back up settings" downloads configs, tokens and instructions as JSON,
+  "Restore from backup" recreates missing sandboxes from such a file,
+- a QR code of the claude.ai session link, to continue on a phone,
 - English and Czech, switchable.
 
 ### Sandbox container
@@ -205,12 +211,25 @@ name on a Docker network): list and new-sandbox form, light and dark, desktop
 and phone width, into `screenshots/`. Used to review layout changes without a
 browser at hand.
 
+## Security of the manager
+
+The manager has no login: it serves only on `127.0.0.1` and trusts whoever
+reaches it. A web page open in the same browser can still send requests to
+localhost, so every change (POST, PATCH, DELETE) must carry the
+`X-Sandbox-Manager: 1` header, which a foreign page cannot add without a CORS
+preflight the manager never approves, and any `Origin` header must match the
+manager's own host, for HTTP and for the WebSocket terminal and log streams.
+
 ## Tests
 
 `manager`: `pnpm test` (vitest) covers credential splitting, registry name
 parsing, port allocation and the instructions file. `sandbox/test/run.sh`
 covers the library helpers and the pre-push guard against a bare repository.
-CI runs both before building images.
+CI runs both before building images, then `scripts/e2e.sh` against real
+Docker on the runner: it starts a manager from the freshly built images,
+checks the CSRF rules, creates and starts a sandbox, starts a static dev
+server in it, waits for the thumbnail, runs the doctor, checks the backup,
+stops and deletes.
 
 ## Findings from the prototype
 
