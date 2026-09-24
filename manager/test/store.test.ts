@@ -38,7 +38,7 @@ describe('sandbox store', () => {
 		expect(store.validName('-x')).toBe(false)
 	})
 	it('allocates distinct host ports and keeps tokens out of the config', async () => {
-		const a = await store.create({ name: 'a', repoUrl: 'https://x:T1@bitbucket.org/w/a.git' })
+		const a = await store.create({ name: 'a', repoUrl: 'https://x:SECRET-TOKEN-xyz@bitbucket.org/w/a.git' })
 		const b = await store.create({ name: 'b' })
 		expect(a.hostPort).toBe(3001)
 		expect(b.hostPort).toBe(3002)
@@ -47,7 +47,7 @@ describe('sandbox store', () => {
 		expect(await store.hasToken('a')).toBe(true)
 		expect(await store.hasToken('b')).toBe(false)
 		const raw = await fs.readFile(path.join(dir, '.manager', 'sandboxes.json'), 'utf8')
-		expect(raw).not.toContain('T1')
+		expect(raw).not.toContain('SECRET-TOKEN-xyz')
 		expect(store.lanPort(a)).toBe(13001)
 	})
 	it('rejects duplicates and bad names', async () => {
