@@ -652,7 +652,7 @@ function SandboxCard({ s, usage, host, lang, lanHost, lanHosts, onLanHost, run, 
 				{primary}
 				<Menu icon="more" label={undefined} items={menuItems} />
 			</div>
-			{running && st && (stage.step === 3 || st.preview.proxyUp === false || s.outdated) && (
+			{running && st && (stage.step === 3 || st.preview.proxyUp === false || s.outdated || s.settingsPending) && (
 				<div className="card-pills">
 					{stage.step === 3 && (
 						st.preview.devServerUp ? (
@@ -666,6 +666,7 @@ function SandboxCard({ s, usage, host, lang, lanHost, lanHosts, onLanHost, run, 
 					{!st.claude.serverRunning && stage.step === 3 && <Pill tone="error">{t('claudeOffline')}</Pill>}
 					{st.preview.proxyUp === false && <Pill tone="error">{t('proxyDown')}</Pill>}
 					{s.outdated && <Pill tone="warn">{t('outdated')} · <button className="pill-link" onClick={() => run(() => api.start(s.name))}>{t('restart')}</button></Pill>}
+					{s.settingsPending && !s.outdated && <Pill tone="warn">{t('settingsPending')} · <button className="pill-link" onClick={() => run(() => api.start(s.name))}>{t('restart')}</button></Pill>}
 				</div>
 			)}
 
@@ -731,7 +732,7 @@ function SandboxCard({ s, usage, host, lang, lanHost, lanHosts, onLanHost, run, 
 							{st.preview.tunnelUrl && (
 								<Access title={t('shared')} icon="globe" url={st.preview.tunnelUrl} user={st.preview.user} password={st.preview.password} onQr={(text) => setModal({ kind: 'qr', text, title: t('shared') })} />
 							)}
-							{s.lanPreview && lanHost && (
+							{s.lanPreview && lanHost && !s.settingsPending && (
 								<Access
 									title={t('lanUrl')}
 									icon="phone"

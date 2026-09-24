@@ -16,6 +16,7 @@ export type Sandbox = {
 	container: { exists: boolean; running: boolean; status: string; image: string; imageId: string; exitCode: number; finishedAt: string }
 	failure: string
 	outdated: boolean
+	settingsPending: boolean
 	stoppedReason: { reason: 'idle'; hours: number; at: string } | null
 	status: null | {
 		git: { branch: string; remote: string; dirty: number; ahead: number; lastCommit: string; today: string[]; changed: string[]; shortstat: string }

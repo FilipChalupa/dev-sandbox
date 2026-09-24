@@ -3,10 +3,17 @@ import { config, hostManagerDir } from './config.js'
 import { lanPort, type SandboxConfig } from './store.js'
 import path from 'node:path'
 import os from 'node:os'
+import { createHash } from 'node:crypto'
 
 export const docker = new Docker()
 
 const containerName = (name: string) => config.containerPrefix + name
+
+// Settings that only take effect when the container is created again.
+export function configFingerprint(s: SandboxConfig) {
+	const relevant = [s.repoUrl, s.branch, s.gitUsername, s.autosaveMinutes, s.autostart, s.memoryGb, s.cpus, s.lanPreview, s.hostPort, s.instructions]
+	return createHash('sha1').update(JSON.stringify(relevant)).digest('hex').slice(0, 12)
+}
 
 export async function containerState(name: string) {
 	try {
@@ -17,11 +24,12 @@ export async function containerState(name: string) {
 			status: info.State.Status,
 			image: info.Config.Image,
 			imageId: info.Image,
+			configFingerprint: info.Config.Labels?.['dev-sandbox.config'] ?? '',
 			exitCode: info.State.Running ? 0 : info.State.ExitCode,
 			finishedAt: info.State.Running ? '' : info.State.FinishedAt,
 		}
 	} catch {
-		return { exists: false, running: false, status: 'missing', image: '', imageId: '', exitCode: 0, finishedAt: '' }
+		return { exists: false, running: false, status: 'missing', image: '', imageId: '', configFingerprint: '', exitCode: 0, finishedAt: '' }
 	}
 }
 
@@ -88,7 +96,7 @@ export async function start(sandbox: SandboxConfig) {
 	const container = await docker.createContainer({
 		name: containerName(sandbox.name),
 		Image: config.image,
-		Labels: { [config.label]: sandbox.name },
+		Labels: { [config.label]: sandbox.name, 'dev-sandbox.config': configFingerprint(sandbox) },
 		Env: [
 			`SANDBOX_NAME=${sandbox.name}`,
 			`SANDBOX_REPO_URL=${sandbox.repoUrl}`,

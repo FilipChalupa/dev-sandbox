@@ -60,7 +60,9 @@ async function describe(s: store.SandboxConfig) {
 	const failure = failed ? await dk.failureReason(s.name) : ''
 	const outdated = container.running && Boolean(imageId) && container.imageId !== imageId
 	const stoppedReason = container.running ? null : await store.readStoppedReason(s.name)
-	return { ...s, lanPort: store.lanPort(s), hasToken, container, failure, outdated, stoppedReason, status: container.running ? status : null }
+	// The token is not part of the fingerprint: it is read from a file at start.
+	const settingsPending = container.running && container.configFingerprint !== '' && container.configFingerprint !== dk.configFingerprint(s)
+	return { ...s, lanPort: store.lanPort(s), hasToken, container, failure, outdated, settingsPending, stoppedReason, status: container.running ? status : null }
 }
 
 app.get('/api/sandboxes', async () => json(await Promise.all((await store.readAll()).map(describe))))
