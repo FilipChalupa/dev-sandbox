@@ -20,8 +20,15 @@ architecture and decisions.
 
 1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
    and turn on "Start Docker Desktop when you sign in".
-2. Download [`Install sandbox.command`](installer/Install%20sandbox.command)
-   and double-click it (or run `installer/install.sh` in a terminal).
+2. Either download [`Install sandbox.command`](installer/Install%20sandbox.command)
+   and double-click it, or paste this into Terminal:
+
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/FilipChalupa/dev-sandbox/main/installer/install.sh | bash
+   ```
+
+   Both do the same: pull the images, start the manager, set up the small
+   host helper, and open the UI.
 3. The manager opens at <http://localhost:8787>. Create a sandbox, start it,
    log in to Claude the first time (the card walks you through it), then
    "Open in claude.ai".
