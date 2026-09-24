@@ -130,6 +130,18 @@ UI:
   changes dialog,
 - keyboard: N opens the new sandbox form, Escape closes dialogs; with a
   single sandbox its main button has focus,
+- after the first run the Claude server restarts with `--continue`, so a
+  laptop that slept keeps the same conversation in claude.ai (falls back to
+  a new session when nothing can be resumed),
+- container operations are serialized per sandbox and a start already in
+  flight is shared; a start interrupted mid-init leaves a broken `.git`, which
+  the entrypoint detects and sets up again,
+- when the host port is taken by something else, the start moves to the next
+  free port and says so,
+- every log in the state directory is capped (tail kept above 1 MB),
+- rename (folders, state and transcripts move; the container is recreated),
+  drag-and-drop order of the cards, the person's time zone passed to the
+  sandboxes as `TZ`, and "Copy report" in diagnostics for support requests,
 - English and Czech, switchable.
 
 ### Sandbox container

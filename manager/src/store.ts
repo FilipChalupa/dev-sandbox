@@ -10,6 +10,7 @@ export type SandboxConfig = {
 	autosaveMinutes: number
 	gitUsername: string
 	instructions: string
+	order: number
 	autostart: boolean
 	memoryGb: number
 	cpus: number
@@ -25,7 +26,9 @@ const file = () => managerDir('sandboxes.json')
 export async function readAll(): Promise<SandboxConfig[]> {
 	try {
 		const list = JSON.parse(await fs.readFile(file(), 'utf8')) as Partial<SandboxConfig>[]
-		return list.map((s) => ({ ...defaults, autostart: false, gitUsername: '', instructions: '', ...s }) as SandboxConfig)
+		return list
+			.map((s, i) => ({ ...defaults, autostart: false, gitUsername: '', instructions: '', order: i, ...s }) as SandboxConfig)
+			.sort((a, b) => a.order - b.order)
 	} catch {
 		return []
 	}
@@ -78,6 +81,7 @@ export async function create(input: Partial<SandboxConfig> & { name: string; tok
 		autosaveMinutes: input.autosaveMinutes ?? 10,
 		gitUsername: input.gitUsername ?? '',
 		instructions: input.instructions ?? '',
+		order: list.length ? Math.max(...list.map((s) => s.order ?? 0)) + 1 : 0,
 		autostart: input.autostart ?? false,
 		memoryGb: input.memoryGb ?? defaults.memoryGb,
 		cpus: input.cpus ?? defaults.cpus,
@@ -98,6 +102,7 @@ export async function update(name: string, patch: Partial<SandboxConfig> & { tok
 	const list = await readAll()
 	const sandbox = list.find((s) => s.name === name)
 	if (!sandbox) throw new Error('Unknown sandbox')
+	if (patch.hostPort !== undefined) sandbox.hostPort = Number(patch.hostPort)
 	if (patch.repoUrl !== undefined) {
 		const creds = splitCredentials(patch.repoUrl)
 		sandbox.repoUrl = creds.url
@@ -121,6 +126,55 @@ export async function update(name: string, patch: Partial<SandboxConfig> & { tok
 	if (patch.token !== undefined) await setToken(name, patch.token)
 	await writeAll(list)
 	return sandbox
+}
+
+// Next host port no sandbox uses (the caller checks the host itself).
+export async function freePort(except: string) {
+	const used = new Set((await readAll()).filter((s) => s.name !== except).map((s) => s.hostPort))
+	let port = (await readAll()).find((s) => s.name === except)?.hostPort ?? config.firstPort
+	do port++; while (used.has(port))
+	return port
+}
+
+export async function reorder(names: string[]) {
+	const list = await readAll()
+	for (const s of list) {
+		const i = names.indexOf(s.name)
+		if (i >= 0) s.order = i
+	}
+	await writeAll(list.sort((a, b) => a.order - b.order))
+}
+
+// Rename: the config entry, the project folder, the state folder and
+// Claude's transcript folder for the workspace path. The container is
+// recreated by the caller.
+export async function rename(name: string, newName: string) {
+	if (!validName(newName)) throw new Error('Name: lowercase letters, digits and dashes only')
+	const list = await readAll()
+	if (list.some((s) => s.name === newName)) throw new Error('A sandbox with this name exists')
+	const s = list.find((x) => x.name === name)
+	if (!s) throw new Error('Unknown sandbox')
+	await fs.rename(path.join(config.dataDir, name), path.join(config.dataDir, newName)).catch(() => {})
+	await fs.rename(managerDir(name), managerDir(newName)).catch(() => {})
+	await fs.rename(managerDir('claude', 'projects', `-workspace-${name}`), managerDir('claude', 'projects', `-workspace-${newName}`)).catch(() => {})
+	s.name = newName
+	await writeAll(list)
+	return s
+}
+
+// Manager-wide settings (time zone of the person, from the browser).
+export type Settings = { timeZone: string }
+export async function readSettings(): Promise<Settings> {
+	try {
+		return { timeZone: '', ...JSON.parse(await fs.readFile(managerDir('settings.json'), 'utf8')) }
+	} catch {
+		return { timeZone: '' }
+	}
+}
+export async function writeSettings(patch: Partial<Settings>) {
+	const cur = await readSettings()
+	await fs.mkdir(managerDir(), { recursive: true })
+	await fs.writeFile(managerDir('settings.json'), JSON.stringify({ ...cur, ...patch }, null, '\t') + '\n')
 }
 
 export async function remove(name: string, deleteFiles: boolean) {

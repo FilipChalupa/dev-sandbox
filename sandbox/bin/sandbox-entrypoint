@@ -39,6 +39,12 @@ fi
 
 # --- git: repository and branch -------------------------------------------
 cd "$SANDBOX_WORKSPACE"
+# A start interrupted in the middle of init/clone leaves a broken .git behind.
+if [ -d .git ] && ! git rev-parse --git-dir >/dev/null 2>&1; then
+	log "repository metadata is broken, setting it up again"
+	rm -rf .git
+	repair=1
+fi
 if [ ! -d .git ]; then
 	if [ -n "$repo_url" ]; then
 		log "cloning $repo_url"
@@ -51,7 +57,8 @@ if [ ! -d .git ]; then
 		fi
 		git remote set-head origin -a >/dev/null 2>&1 || true
 		default="$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
-		[ -n "$default" ] && git checkout -q "$default" 2>/dev/null || true
+		# -f: files from an interrupted earlier clone may already be in the way
+		[ -n "$default" ] && git checkout -q -f "$default" 2>/dev/null || true
 	else
 		log "no repository URL, starting an empty project"
 		git init -q -b "$SANDBOX_BRANCH" .

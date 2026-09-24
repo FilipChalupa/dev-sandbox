@@ -30,6 +30,16 @@ const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app })
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public')
 
 const json = (data: unknown, status = 200) => Response.json(data, { status })
+
+// One container operation at a time per sandbox (two clicks, two tabs).
+const locks = new Map<string, Promise<unknown>>()
+function locked<T>(name: string, fn: () => Promise<T>): Promise<T> {
+	const prev = locks.get(name) ?? Promise.resolve()
+	const next = prev.catch(() => {}).then(fn)
+	locks.set(name, next)
+	next.finally(() => { if (locks.get(name) === next) locks.delete(name) })
+	return next
+}
 const fail = (e: unknown) => json({ error: e instanceof Error ? e.message : String(e) }, 400)
 
 // Stop sandboxes nobody has used for a while.
@@ -101,19 +111,39 @@ app.patch('/api/sandboxes/:name', async (c) => {
 	}
 })
 
+// A start already in flight is shared, not repeated (double click, two tabs).
+const startsInFlight = new Map<string, Promise<Response>>()
 app.post('/api/sandboxes/:name/start', async (c) => {
-	try {
-		const s = (await store.readAll()).find((x) => x.name === c.req.param('name'))
-		if (!s) return json({ error: 'Unknown sandbox' }, 404)
-		await store.setStoppedReason(s.name, null)
-		await dk.start(s)
-		return json(await describe(s))
-	} catch (e) {
-		return fail(e)
-	}
+	const name = c.req.param('name')
+	const inflight = startsInFlight.get(name)
+	if (inflight) return (await inflight).clone()
+	const p = locked(name, async () => {
+		try {
+			let s = (await store.readAll()).find((x) => x.name === name)
+			if (!s) return json({ error: 'Unknown sandbox' }, 404)
+			await store.setStoppedReason(s.name, null)
+			let portNote: { from: number; to: number } | null = null
+			try {
+				await dk.start(s)
+			} catch (e) {
+				if (!dk.isPortClash(e)) throw e
+				// Something else on this computer holds the port: move to a free one.
+				const from = s.hostPort
+				s = await store.update(name, { hostPort: await store.freePort(name) })
+				await dk.start(s)
+				portNote = { from, to: s.hostPort }
+			}
+			return json({ ...(await describe(s)), portNote })
+		} catch (e) {
+			return fail(e)
+		}
+	})
+	startsInFlight.set(name, p)
+	p.finally(() => startsInFlight.delete(name))
+	return (await p).clone()
 })
 
-app.post('/api/sandboxes/:name/stop', async (c) => {
+app.post('/api/sandboxes/:name/stop', async (c) => locked(c.req.param('name'), async () => {
 	try {
 		await dk.stop(c.req.param('name'))
 		const s = (await store.readAll()).find((x) => x.name === c.req.param('name'))
@@ -121,10 +151,10 @@ app.post('/api/sandboxes/:name/stop', async (c) => {
 	} catch (e) {
 		return fail(e)
 	}
-})
+}))
 
 // Fresh start: only for sandboxes backed by a git remote.
-app.post('/api/sandboxes/:name/reset', async (c) => {
+app.post('/api/sandboxes/:name/reset', async (c) => locked(c.req.param('name'), async () => {
 	try {
 		const name = c.req.param('name')
 		const s = (await store.readAll()).find((x) => x.name === name)
@@ -134,6 +164,43 @@ app.post('/api/sandboxes/:name/reset', async (c) => {
 		await store.resetFiles(name)
 		await dk.start(s)
 		return json(await describe(s))
+	} catch (e) {
+		return fail(e)
+	}
+}))
+
+// Rename: recreate the container under the new name when it was running.
+app.post('/api/sandboxes/:name/rename', async (c) => locked(c.req.param('name'), async () => {
+	try {
+		const name = c.req.param('name')
+		const { newName } = await c.req.json()
+		const wasRunning = (await dk.containerState(name)).running
+		await dk.removeContainer(name)
+		const s = await store.rename(name, String(newName ?? ''))
+		if (wasRunning) await dk.start(s)
+		return json(await describe(s))
+	} catch (e) {
+		return fail(e)
+	}
+}))
+
+app.post('/api/order', async (c) => {
+	try {
+		const { names } = await c.req.json()
+		await store.reorder(Array.isArray(names) ? names.map(String) : [])
+		return json({ ok: true })
+	} catch (e) {
+		return fail(e)
+	}
+})
+
+app.get('/api/settings', async () => json(await store.readSettings()))
+app.post('/api/settings', async (c) => {
+	try {
+		const { timeZone } = await c.req.json()
+		if (timeZone !== undefined && !/^[A-Za-z_]+(?:\/[A-Za-z_+-]+)*$/.test(String(timeZone))) return json({ error: 'bad time zone' }, 400)
+		await store.writeSettings({ timeZone: String(timeZone ?? '') })
+		return json(await store.readSettings())
 	} catch (e) {
 		return fail(e)
 	}
@@ -348,7 +415,8 @@ app.get('/api/diagnostics', async () => {
 	}
 	const limitsGb = sandboxes.reduce((a, s) => a + s.memoryGb, 0)
 	const runningLimitsGb = list.filter((l) => l.container.running).reduce((a, l) => a + (sandboxes.find((s) => s.name === l.name)?.memoryGb ?? 0), 0)
-	return json({ manager: managerVersion, docker, host, disk, dataDir: config.dataDir, hostDir: config.hostDir, image: config.image, sandboxes: list, memory: { limitsGb, runningLimitsGb } })
+	const settings = await store.readSettings()
+	return json({ manager: managerVersion, docker, host, disk, dataDir: config.dataDir, hostDir: config.hostDir, image: config.image, sandboxes: list, memory: { limitsGb, runningLimitsGb }, settings, failures: Object.fromEntries(await Promise.all(list.filter((l) => !l.container.running && l.container.exists && l.container.exitCode).map(async (l) => [l.name, await dk.failureReason(l.name)]))) })
 })
 
 // Browser terminal: ?cmd=shell | login | claude

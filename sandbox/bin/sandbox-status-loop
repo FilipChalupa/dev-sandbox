@@ -3,10 +3,12 @@
 source sandbox-lib
 while true; do
 	sandbox-status-write
-	# The server redraws its terminal constantly; keep the piped log small.
-	log="$(state_file claude.log)"
-	if [ -f "$log" ] && [ "$(stat -c %s "$log")" -gt 1000000 ]; then
-		tail -c 200000 "$log" > "$log.tmp" && cat "$log.tmp" > "$log" && rm -f "$log.tmp"
-	fi
+	# Keep every log small (the Claude server redraws its terminal constantly).
+	for name in claude.log dev.log caddy.log cloudflared.log autosave.log port-watch.log thumb.log fnm.log; do
+		log="$(state_file "$name")"
+		if [ -f "$log" ] && [ "$(stat -c %s "$log")" -gt 1000000 ]; then
+			tail -c 200000 "$log" > "$log.tmp" && cat "$log.tmp" > "$log" && rm -f "$log.tmp"
+		fi
+	done
 	sleep 5
 done

@@ -6,6 +6,7 @@ export type Sandbox = {
 	autosaveMinutes: number
 	gitUsername: string
 	instructions: string
+	order: number
 	autostart: boolean
 	memoryGb: number
 	cpus: number
@@ -49,9 +50,13 @@ export const api = {
 	list: () => call<Sandbox[]>('GET', '/api/sandboxes'),
 	create: (body: object) => call<Sandbox>('POST', '/api/sandboxes', body),
 	update: (name: string, body: object) => call<Sandbox>('PATCH', `/api/sandboxes/${name}`, body),
-	start: (name: string) => call<Sandbox>('POST', `/api/sandboxes/${name}/start`),
+	start: (name: string) => call<Sandbox & { portNote?: { from: number; to: number } | null }>('POST', `/api/sandboxes/${name}/start`),
 	stop: (name: string) => call<Sandbox>('POST', `/api/sandboxes/${name}/stop`),
 	reset: (name: string) => call<Sandbox>('POST', `/api/sandboxes/${name}/reset`),
+	rename: (name: string, newName: string) => call<Sandbox>('POST', `/api/sandboxes/${name}/rename`, { newName }),
+	order: (names: string[]) => call<{ ok: boolean }>('POST', '/api/order', { names }),
+	settings: () => call<{ timeZone: string }>('GET', '/api/settings'),
+	saveSettings: (body: { timeZone: string }) => call<{ timeZone: string }>('POST', '/api/settings', body),
 	remove: (name: string, files: boolean) => call<unknown>('DELETE', `/api/sandboxes/${name}?files=${files ? 1 : 0}`),
 	logs: (name: string) => fetch(`/api/sandboxes/${name}/logs`).then((r) => r.text()),
 	update_image: () => call<UpdateProgress>('POST', '/api/update'),

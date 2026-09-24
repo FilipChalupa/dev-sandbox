@@ -1,6 +1,6 @@
 import Docker from 'dockerode'
 import { config, hostManagerDir } from './config.js'
-import { lanPort, type SandboxConfig } from './store.js'
+import { lanPort, readSettings, type SandboxConfig } from './store.js'
 import path from 'node:path'
 import os from 'node:os'
 import { createHash } from 'node:crypto'
@@ -94,6 +94,7 @@ export async function start(sandbox: SandboxConfig) {
 	await ensureImage()
 	await removeContainer(sandbox.name)
 	const hostWorkspace = path.posix.join(config.hostDir, sandbox.name)
+	const tz = (await readSettings()).timeZone
 	const container = await docker.createContainer({
 		name: containerName(sandbox.name),
 		Image: config.image,
@@ -104,6 +105,7 @@ export async function start(sandbox: SandboxConfig) {
 			`SANDBOX_BRANCH=${sandbox.branch}`,
 			`SANDBOX_GIT_USERNAME=${sandbox.gitUsername ?? ''}`,
 			`SANDBOX_LAN_PREVIEW=${sandbox.lanPreview ? 1 : 0}`,
+			...(tz ? [`TZ=${tz}`] : []),
 			`SANDBOX_AUTOSAVE_MINUTES=${sandbox.autosaveMinutes}`,
 			`SANDBOX_PREVIEW_URL=http://localhost:${sandbox.hostPort}`,
 		],
@@ -130,8 +132,16 @@ export async function start(sandbox: SandboxConfig) {
 			Init: true,
 		},
 	})
-	await container.start()
+	try {
+		await container.start()
+	} catch (e) {
+		// Leave no half-made container behind; the caller may retry on another port.
+		await container.remove({ force: true }).catch(() => {})
+		throw e
+	}
 }
+
+export const isPortClash = (e: unknown) => /port is already allocated|address already in use/i.test(e instanceof Error ? e.message : String(e))
 
 // Apply what Docker and the sandbox accept without a restart.
 export async function applyLive(sandbox: SandboxConfig, changed: { limits: boolean; autostart: boolean; instructions: boolean; autosave: boolean; lan: boolean; branch: boolean }) {

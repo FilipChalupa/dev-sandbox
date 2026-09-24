@@ -2,8 +2,22 @@
 # Runs inside tmux. Keeps the Remote Control server alive: waits for a login,
 # restarts the server when it exits (crash, or the ~10 minute network-outage
 # give-up), and stays interactive so a person can attach for the login.
+#
+# After the first run it tries `--continue` first, which brings back the
+# session the previous server had (Claude Code keeps the record for about
+# four hours), so a laptop that slept keeps the same conversation in
+# claude.ai. When that is not possible the server starts a new session.
 source sandbox-lib
 cd "$SANDBOX_WORKSPACE"
+started_once="$(state_file claude-started-once)"
+
+run_server() {
+	# The log is where the session link is read from; drop the previous
+	# server's link so the UI never points at an old environment.
+	: > "$(state_file claude.log)"
+	sandbox-status-write >/dev/null 2>&1 || true
+	claude remote-control --name "$SANDBOX_NAME" --permission-mode bypassPermissions "$@"
+}
 
 while true; do
 	if ! claude_logged_in; then
@@ -14,15 +28,21 @@ while true; do
 		continue
 	fi
 	sandbox-git-identity >/dev/null 2>&1 || true
+	if [ -f "$started_once" ]; then
+		echo "Resuming the previous Remote Control session for '$SANDBOX_NAME'…"
+		t0=$(date +%s)
+		run_server --continue
+		# A quick exit means there was nothing to resume; start fresh below.
+		if [ $(( $(date +%s) - t0 )) -gt 20 ]; then
+			echo "Remote Control server exited, restarting in 5 s…"
+			sleep 5
+			continue
+		fi
+		echo "Nothing to resume, starting a new session."
+	fi
 	echo "Starting Claude Remote Control server for '$SANDBOX_NAME'…"
-	# The log is where the session link is read from; drop the previous
-	# server's link so the UI never points at an old environment.
-	: > "$(state_file claude.log)"
-	sandbox-status-write >/dev/null 2>&1 || true
-	claude remote-control \
-		--name "$SANDBOX_NAME" \
-		--permission-mode bypassPermissions \
-		--spawn same-dir
+	touch "$started_once"
+	run_server --spawn same-dir
 	echo "Remote Control server exited, restarting in 5 s…"
 	sleep 5
 done

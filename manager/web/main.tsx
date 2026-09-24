@@ -165,6 +165,13 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 		}
 	}, [list, notify])
 
+	// Tell the manager the person's time zone (sandboxes get it as TZ).
+	useEffect(() => {
+		const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+		if (!tz) return
+		api.settings().then((s) => { if (s.timeZone !== tz) api.saveSettings({ timeZone: tz }).catch(() => {}) }).catch(() => {})
+	}, [])
+
 	// Keyboard: N opens the new sandbox form (Escape closes dialogs elsewhere).
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
@@ -243,10 +250,16 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 		}
 	}
 
-	const sorted = useMemo(
-		() => (list ? [...list].sort((a, b) => Number(b.container.running) - Number(a.container.running) || a.name.localeCompare(b.name)) : null),
-		[list],
-	)
+	// Order is the person's (drag and drop); new sandboxes go last.
+	const sorted = useMemo(() => (list ? [...list].sort((a, b) => a.order - b.order) : null), [list])
+	const [dragging, setDragging] = useState<string | null>(null)
+	const dropOn = async (target: string) => {
+		if (!dragging || dragging === target || !sorted) return
+		const names = sorted.map((x) => x.name).filter((n) => n !== dragging)
+		names.splice(names.indexOf(target), 0, dragging)
+		setDragging(null)
+		await run(() => api.order(names))
+	}
 
 	return (
 		<main>
@@ -301,7 +314,20 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 			) : (
 				<ul className="cards">
 					{sorted.map((s) => (
-						<SandboxCard key={s.name} s={s} focus={sorted.length === 1} usage={stats[s.name] ?? null} host={host} lang={lang} lanHost={lanHost} lanHosts={lanHosts} onLanHost={chooseLan} run={run} setModal={setModal} />
+						<SandboxCard
+							key={s.name}
+							s={s}
+							focus={sorted.length === 1}
+							usage={stats[s.name] ?? null}
+							host={host}
+							lang={lang}
+							lanHost={lanHost}
+							lanHosts={lanHosts}
+							onLanHost={chooseLan}
+							run={run}
+							setModal={setModal}
+							drag={{ active: dragging === s.name, onStart: () => setDragging(s.name), onDrop: () => dropOn(s.name), onEnd: () => setDragging(null) }}
+						/>
 					))}
 				</ul>
 			)}
@@ -321,7 +347,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 				/>
 			)}
 			{modal?.kind === 'edit' && (
-				<SandboxForm existing={modal.s} onCancel={close} onSubmit={async (body) => { await run(async () => { const r = (await api.update(modal.s.name, body)) as Sandbox & { pendingNote?: string }; if (r.pendingNote === 'branch') toast('info', t('branchDeferred')) }); close() }} />
+				<SandboxForm existing={modal.s} onCancel={close} onSubmit={async (body) => { await run(async () => { const { newName, ...rest } = body as { newName?: string }; const r = (await api.update(modal.s.name, rest)) as Sandbox & { pendingNote?: string }; if (r.pendingNote === 'branch') toast('info', t('branchDeferred')); if (newName) await api.rename(modal.s.name, newName) }); close() }} />
 			)}
 			{modal?.kind === 'terminal' && <Terminal name={modal.name} cmd={modal.cmd} onClose={close} />}
 			{modal?.kind === 'logs' && <Logs name={modal.name} onClose={close} />}
@@ -555,9 +581,10 @@ function detectPlatform(): 'mac' | 'win' | 'other' {
 }
 const platform = detectPlatform()
 
-function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
+function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost, run, setModal, drag }: {
 	s: Sandbox
 	focus?: boolean
+	drag: { active: boolean; onStart: () => void; onDrop: () => void; onEnd: () => void }
 	usage: { cpuPercent: number; memMb: number; memLimitMb: number } | null
 	host: { hostDir: string; helper: boolean }
 	lang: string
@@ -634,7 +661,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 		: <Pill tone="on">{t('running')}</Pill>
 
 	const primary =
-		!running ? <button className="primary" autoFocus={focus} onClick={() => run(() => api.start(s.name))}><Icon name="play" /> {t('start')}</button>
+		!running ? <button className="primary" autoFocus={focus} onClick={() => run(async () => { const r = await api.start(s.name); if (r.portNote) toast('info', t('portMoved', r.portNote)) })}><Icon name="play" /> {t('start')}</button>
 		: stage.attention ? <button className="primary" autoFocus={focus} onClick={() => setModal({ kind: 'login', name: s.name })}><Icon name="login" /> {t('loginClaude')}</button>
 		: st && st.claude.sessionUrl ? <a className="button primary" autoFocus={focus} href={st.claude.sessionUrl} target="_blank" rel="noreferrer"><Icon name="external" /> {t('openClaude')}</a>
 		: st ? <button className="primary" disabled><Spinner /> {t('connecting')}</button>
@@ -657,8 +684,13 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 	]
 
 	return (
-		<li className={`card ${stage.tone}${open ? '' : ' collapsed'}`}>
+		<li
+			className={`card ${stage.tone}${open ? '' : ' collapsed'}${drag.active ? ' dragging' : ''}`}
+			onDragOver={(e) => e.preventDefault()}
+			onDrop={(e) => { e.preventDefault(); drag.onDrop() }}
+		>
 			<div className="card-head">
+				<span className="grip" draggable title={t('dragHint')} onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; drag.onStart() }} onDragEnd={drag.onEnd}>⋮⋮</span>
 				<button className="icon-btn chevron" onClick={() => setExpanded(!open)} aria-label={open ? t('collapse') : t('expand')} aria-expanded={open}>
 					<Icon name="chevron" />
 				</button>
@@ -1006,6 +1038,20 @@ function Diagnostics({ lang, onClose }: { lang: string; onClose: () => void }) {
 							))}
 						</dl>
 					</section>
+					<div className="actions">
+						<Copy
+							label={t('copyReport')}
+							text={[
+								`Sandbox manager ${d.manager.version} (${String(d.manager.build).slice(0, 7)}), ${new Date().toISOString()}`,
+								`Docker: ${d.docker.error ?? `${d.docker.docker?.version} on ${d.docker.docker?.os} ${d.docker.docker?.arch}, ${d.docker.docker?.cpus} CPU, ${d.docker.docker?.memoryGb} GB`}`,
+								`Host: ${d.host.lanIp || '-'} (${d.host.hostName || '-'}), helper ${d.host.helper ? 'running' : 'missing'}, tz ${d.settings?.timeZone || '-'}`,
+								d.disk ? `Disk: ${d.disk.freeGb} GB free of ${d.disk.totalGb} GB` : '',
+								`Images: ${Object.entries(d.docker.images ?? {}).map(([n, i]: [string, any]) => `${n} ${i.missing ? 'missing' : `${i.sizeMb} MB ${String(i.digest).slice(7, 19)}`}`).join('; ')}`,
+								`Sandboxes: ${d.sandboxes.map((x: any) => `${x.name}=${x.container.status}${x.loggedIn === false ? ' (not logged in)' : ''}${x.claudeVersion ? ` claude ${x.claudeVersion}` : ''}`).join('; ')}`,
+								...Object.entries(d.failures ?? {}).map(([n, f]) => `Failure ${n}: ${String(f).replace(/\n/g, ' | ')}`),
+							].filter(Boolean).join('\n')}
+						/>
+					</div>
 					<section>
 						<h3>{t('diagSandboxes')}</h3>
 						<table className="table">
@@ -1101,6 +1147,8 @@ function SandboxForm({ existing, initial, onSubmit, onCancel }: { existing?: San
 		if (!existing) {
 			body.name = name
 			body.startNow = startNow
+		} else if (name !== existing.name) {
+			body.newName = name
 		}
 		if (token) body.token = token
 		await onSubmit(body)
@@ -1119,13 +1167,11 @@ function SandboxForm({ existing, initial, onSubmit, onCancel }: { existing?: San
 					<input value={token} onChange={(e) => setToken(e.target.value)} type="password" placeholder={existing?.hasToken ? '••••••••' : ''} />
 					<small>{existing?.hasToken ? t('tokenSet') : t('tokenHint')}</small>
 				</label>
-				{!existing && (
-					<label>
-						{t('name')}
-						<input value={name} onChange={(e) => { setName(e.target.value.toLowerCase()); setNameTouched(true) }} required pattern="[a-z0-9][a-z0-9-]*" className={name && !nameOk ? 'invalid' : ''} />
-						<small>{t('nameHint')}</small>
-					</label>
-				)}
+				<label>
+					{t('name')}
+					<input value={name} onChange={(e) => { setName(e.target.value.toLowerCase()); setNameTouched(true) }} required pattern="[a-z0-9][a-z0-9-]*" className={name && !nameOk ? 'invalid' : ''} />
+					<small>{existing ? t('renameHint') : t('nameHint')}</small>
+				</label>
 				<label>
 					{t('branch')}
 					<input value={branch} onChange={(e) => setBranch(e.target.value)} placeholder={`sandbox/${name || 'name'}`} />
@@ -1168,7 +1214,7 @@ function SandboxForm({ existing, initial, onSubmit, onCancel }: { existing?: San
 				)}
 				<div className="actions">
 					<button type="button" onClick={onCancel}>{t('cancel')}</button>
-					<button type="submit" className="primary" disabled={busy || (!existing && !nameOk)}>{existing ? t('save') : t('create')}</button>
+					<button type="submit" className="primary" disabled={busy || !nameOk}>{existing ? t('save') : t('create')}</button>
 				</div>
 			</form>
 		</Modal>
