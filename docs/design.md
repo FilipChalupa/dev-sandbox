@@ -15,7 +15,7 @@ sandbox. The developer on the team reviews and merges what comes out.
 | Sandbox unit | One sandbox per project. Projects differ in Node version, ports and env, and a Remote Control server is bound to one directory anyway. |
 | Isolation | Docker container. No Docker-in-Docker in v1; projects that need a database are out of scope for now. |
 | Claude Code | Runs inside the container as `claude remote-control`, permission mode `bypassPermissions`. The colleague cannot judge permission prompts, so the container is the safety boundary. |
-| Claude account | The colleague's own account on a Team plan. The org owner must enable Remote Control in the Claude Code admin settings. Login is shared between sandboxes through a shared config directory. |
+| Claude account | The colleague's own paid account (Pro, Max, or a seat on a Team or Enterprise plan). On Team and Enterprise plans an owner must enable Remote Control in the Claude Code admin settings. Login is shared between sandboxes through a shared config directory. |
 | UI for the colleague | claude.ai/code or the Claude mobile app for talking to Claude. A small local web UI (the manager) for creating, starting and stopping sandboxes. No terminal. |
 | Git hosting | Any HTTPS remote with a token (Bitbucket repository access tokens, GitHub fine-grained tokens). Fetch and push only, no pull request API. |
 | Branching | One long-lived working branch per sandbox. No automatic pulls of a base branch: a merge conflict has nobody to resolve it. The developer merges the branch when asked. |
