@@ -19,9 +19,9 @@ export type Sandbox = {
 	settingsPending: boolean
 	stoppedReason: { reason: 'idle'; hours: number; at: string } | null
 	status: null | {
-		git: { branch: string; remote: string; dirty: number; ahead: number; lastCommit: string; today: string[]; changed: string[]; shortstat: string }
+		git: { branch: string; remote: string; dirty: number; ahead: number; lastCommit: string; today: string[]; changed: string[]; shortstat: string; sends: { at: string; count: number; sha: string; subject: string }[] }
 		claude: { loggedIn: boolean; email: string; serverRunning: boolean; supervisorRunning: boolean; sessionUrl: string }
-		preview: { url: string; upstreamPort: number; devServerUp: boolean; proxyUp: boolean; imageAt: string; tunnelUrl: string; user: string; password: string }
+		preview: { url: string; upstreamPort: number; devServerUp: boolean; proxyUp: boolean; lanEnabled: boolean; imageAt: string; tunnelUrl: string; user: string; password: string }
 		lastActivity: string
 		updatedAt: string
 	}

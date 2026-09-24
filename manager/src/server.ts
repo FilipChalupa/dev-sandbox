@@ -61,7 +61,8 @@ async function describe(s: store.SandboxConfig) {
 	const outdated = container.running && Boolean(imageId) && container.imageId !== imageId
 	const stoppedReason = container.running ? null : await store.readStoppedReason(s.name)
 	// The token is not part of the fingerprint: it is read from a file at start.
-	const settingsPending = container.running && container.configFingerprint !== '' && container.configFingerprint !== dk.configFingerprint(s)
+	const branchPending = container.running && Boolean((status as any)?.git?.branch) && (status as any).git.branch !== s.branch
+	const settingsPending = branchPending || (container.running && container.configFingerprint !== '' && container.configFingerprint !== dk.configFingerprint(s))
 	return { ...s, lanPort: store.lanPort(s), hasToken, container, failure, outdated, settingsPending, stoppedReason, status: container.running ? status : null }
 }
 
@@ -82,14 +83,19 @@ app.patch('/api/sandboxes/:name', async (c) => {
 		const name = c.req.param('name')
 		const before = (await store.readAll()).find((x) => x.name === name)
 		const s = await store.update(name, await c.req.json())
+		let branchNote = ''
 		if (before) {
-			await dk.applyLive(s, {
+			const r = await dk.applyLive(s, {
 				limits: before.memoryGb !== s.memoryGb || before.cpus !== s.cpus,
 				autostart: before.autostart !== s.autostart,
 				instructions: before.instructions !== s.instructions,
-			}).catch((e) => console.warn('live apply failed:', e instanceof Error ? e.message : e))
+				autosave: before.autosaveMinutes !== s.autosaveMinutes,
+				lan: before.lanPreview !== s.lanPreview,
+				branch: before.branch !== s.branch,
+			}).catch((e) => { console.warn('live apply failed:', e instanceof Error ? e.message : e); return { branchSwitched: false } })
+			if (!r.branchSwitched) branchNote = 'branch'
 		}
-		return json(await describe(s))
+		return json({ ...(await describe(s)), pendingNote: branchNote })
 	} catch (e) {
 		return fail(e)
 	}

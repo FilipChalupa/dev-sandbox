@@ -4,6 +4,8 @@
 : "${SANDBOX_NAME:?SANDBOX_NAME is required}"
 export SANDBOX_STATE_DIR="${SANDBOX_STATE_DIR:-/state}"
 export SANDBOX_WORKSPACE="${SANDBOX_WORKSPACE:-/workspace/${SANDBOX_NAME}}"
+# The branch can be switched at runtime (sandbox-branch); the file wins.
+if [ -s "$SANDBOX_STATE_DIR/branch" ]; then SANDBOX_BRANCH="$(cat "$SANDBOX_STATE_DIR/branch")"; fi
 export SANDBOX_BRANCH="${SANDBOX_BRANCH:-sandbox/${SANDBOX_NAME}}"
 export SANDBOX_PREVIEW_USER="${SANDBOX_PREVIEW_USER:-preview}"
 export SANDBOX_PREVIEW_URL="${SANDBOX_PREVIEW_URL:-http://localhost:8080}"
@@ -61,6 +63,12 @@ preview_password() {
 		local pw; pw="$(LC_ALL=C tr -dc 'acdefhjkmnpqrtuvwxy347' < <(head -c 600 /dev/urandom))"
 		printf '%s' "${pw:0:12}"
 	fi
+}
+
+# Is the preview for phones on the LAN enabled? (file set by the manager, env at start)
+lan_enabled() {
+	local v; v="$(read_state lan-enabled)"
+	[ "${v:-${SANDBOX_LAN_PREVIEW:-1}}" = "1" ]
 }
 
 upstream_port() { local p; p="$(read_state upstream-port)"; printf '%s' "${p:-3000}"; }

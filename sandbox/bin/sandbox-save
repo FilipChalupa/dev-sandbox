@@ -36,7 +36,10 @@ if git remote get-url origin >/dev/null 2>&1 && git rev-parse --verify -q HEAD >
 				fi
 			done
 		fi
+		count="$(git rev-list --count '@{u}..HEAD' 2>/dev/null || git rev-list --count HEAD)"
 		if out="$(git push -u origin "$SANDBOX_BRANCH" 2>&1)"; then
+			# History for the UI: time, commits sent, head, subject.
+			printf '%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$count" "$(git rev-parse --short HEAD)" "$(git log -1 --format=%s)" >> "$(state_file sends.log)"
 			echo "pushed $SANDBOX_BRANCH"
 		else
 			echo "push failed: $(tail -n 3 <<<"$out")"; exit 4

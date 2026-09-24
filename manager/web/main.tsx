@@ -165,6 +165,21 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 		}
 	}, [list, notify])
 
+	// Keyboard: N opens the new sandbox form (Escape closes dialogs elsewhere).
+	useEffect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			const el = document.activeElement as HTMLElement | null
+			const typing = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)
+			if (typing || modal || e.metaKey || e.ctrlKey || e.altKey) return
+			if (e.key === 'n' || e.key === 'N') {
+				e.preventDefault()
+				setModal({ kind: 'create' })
+			}
+		}
+		document.addEventListener('keydown', onKey)
+		return () => document.removeEventListener('keydown', onKey)
+	}, [modal])
+
 	// Title and favicon say when something waits for the person.
 	const attention = useMemo(() => (list ?? []).some((s) => stageOf(s).attention), [list])
 	useEffect(() => {
@@ -264,7 +279,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 							},
 						]}
 					/>
-					<button className="primary" onClick={() => setModal({ kind: 'create' })}><Icon name="plus" /> <span className="btn-text">{t('newSandbox')}</span></button>
+					<button className="primary" title={t('shortcutNew')} onClick={() => setModal({ kind: 'create' })}><Icon name="plus" /> <span className="btn-text">{t('newSandbox')}</span></button>
 				</div>
 			</header>
 
@@ -286,7 +301,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 			) : (
 				<ul className="cards">
 					{sorted.map((s) => (
-						<SandboxCard key={s.name} s={s} usage={stats[s.name] ?? null} host={host} lang={lang} lanHost={lanHost} lanHosts={lanHosts} onLanHost={chooseLan} run={run} setModal={setModal} />
+						<SandboxCard key={s.name} s={s} focus={sorted.length === 1} usage={stats[s.name] ?? null} host={host} lang={lang} lanHost={lanHost} lanHosts={lanHosts} onLanHost={chooseLan} run={run} setModal={setModal} />
 					))}
 				</ul>
 			)}
@@ -306,7 +321,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 				/>
 			)}
 			{modal?.kind === 'edit' && (
-				<SandboxForm existing={modal.s} onCancel={close} onSubmit={async (body) => { await run(() => api.update(modal.s.name, body), t('sent')); close() }} />
+				<SandboxForm existing={modal.s} onCancel={close} onSubmit={async (body) => { await run(async () => { const r = (await api.update(modal.s.name, body)) as Sandbox & { pendingNote?: string }; if (r.pendingNote === 'branch') toast('info', t('branchDeferred')) }); close() }} />
 			)}
 			{modal?.kind === 'terminal' && <Terminal name={modal.name} cmd={modal.cmd} onClose={close} />}
 			{modal?.kind === 'logs' && <Logs name={modal.name} onClose={close} />}
@@ -540,8 +555,9 @@ function detectPlatform(): 'mac' | 'win' | 'other' {
 }
 const platform = detectPlatform()
 
-function SandboxCard({ s, usage, host, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
+function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
 	s: Sandbox
+	focus?: boolean
 	usage: { cpuPercent: number; memMb: number; memLimitMb: number } | null
 	host: { hostDir: string; helper: boolean }
 	lang: string
@@ -618,9 +634,9 @@ function SandboxCard({ s, usage, host, lang, lanHost, lanHosts, onLanHost, run, 
 		: <Pill tone="on">{t('running')}</Pill>
 
 	const primary =
-		!running ? <button className="primary" onClick={() => run(() => api.start(s.name))}><Icon name="play" /> {t('start')}</button>
-		: stage.attention ? <button className="primary" onClick={() => setModal({ kind: 'login', name: s.name })}><Icon name="login" /> {t('loginClaude')}</button>
-		: st && st.claude.sessionUrl ? <a className="button primary" href={st.claude.sessionUrl} target="_blank" rel="noreferrer"><Icon name="external" /> {t('openClaude')}</a>
+		!running ? <button className="primary" autoFocus={focus} onClick={() => run(() => api.start(s.name))}><Icon name="play" /> {t('start')}</button>
+		: stage.attention ? <button className="primary" autoFocus={focus} onClick={() => setModal({ kind: 'login', name: s.name })}><Icon name="login" /> {t('loginClaude')}</button>
+		: st && st.claude.sessionUrl ? <a className="button primary" autoFocus={focus} href={st.claude.sessionUrl} target="_blank" rel="noreferrer"><Icon name="external" /> {t('openClaude')}</a>
 		: st ? <button className="primary" disabled><Spinner /> {t('connecting')}</button>
 		: null
 
@@ -732,7 +748,7 @@ function SandboxCard({ s, usage, host, lang, lanHost, lanHosts, onLanHost, run, 
 							{st.preview.tunnelUrl && (
 								<Access title={t('shared')} icon="globe" url={st.preview.tunnelUrl} user={st.preview.user} password={st.preview.password} onQr={(text) => setModal({ kind: 'qr', text, title: t('shared') })} />
 							)}
-							{s.lanPreview && lanHost && !s.settingsPending && (
+							{s.lanPreview && lanHost && st.preview.lanEnabled !== false && (
 								<Access
 									title={t('lanUrl')}
 									icon="phone"
@@ -897,9 +913,24 @@ function DevMessage({ s, name, onClose }: { s?: Sandbox; name: string; onClose: 
 function Changes({ s, name, onClose }: { s?: Sandbox; name: string; onClose: () => void }) {
 	const t = useT()
 	const g = s?.status?.git
-	const empty = !g || (g.today.length === 0 && g.changed.length === 0)
+	const links = repoLinks(s?.repoUrl ?? '', g?.branch || s?.branch || '', '')
+	const commitUrl = (sha: string) => (links.commit || links.repo ? repoLinks(s?.repoUrl ?? '', g?.branch || '', sha).commit : '')
+	const sends = g?.sends ?? []
+	const empty = !g || (g.today.length === 0 && g.changed.length === 0 && sends.length === 0)
 	return (
 		<Modal title={<><Icon name="history" /> {t('changesToday')}: {name}</>} onClose={onClose}>
+			{sends.length > 0 && (
+				<div>
+					<h3>{t('sendsTitle')}</h3>
+					<ul className="plain">
+						{sends.map((x, i) => (
+							<li key={i}>
+								<span className="muted">{new Date(x.at).toLocaleString()}</span> · {t('sendsCommits', { n: x.count })} · {commitUrl(x.sha) ? <a href={commitUrl(x.sha)} target="_blank" rel="noreferrer"><code>{x.sha}</code></a> : <code>{x.sha}</code>} {x.subject}
+							</li>
+						))}
+					</ul>
+				</div>
+			)}
 			{empty ? (
 				<p className="muted">{t('nothingToday')}</p>
 			) : (

@@ -8,8 +8,16 @@ hash="$(caddy hash-password --plaintext "$(preview_password)")"
 header_up='header_up Host {upstream_hostport}'
 [ "${SANDBOX_PRESERVE_HOST:-0}" = "1" ] && header_up=''
 
-export PORT="$port" USER="$SANDBOX_PREVIEW_USER" HASH="$hash" HEADER_UP="$header_up"
-envsubst '$PORT $USER $HASH $HEADER_UP' \
+if lan_enabled; then
+	lan_block="basic_auth {
+			$SANDBOX_PREVIEW_USER $hash
+		}
+		import proxy"
+else
+	lan_block='respond "The preview for phones on the local network is switched off in the sandbox settings." 403'
+fi
+export PORT="$port" USER="$SANDBOX_PREVIEW_USER" HASH="$hash" HEADER_UP="$header_up" LAN_BLOCK="$lan_block"
+envsubst '$PORT $USER $HASH $HEADER_UP $LAN_BLOCK' \
 	< /opt/sandbox/templates/Caddyfile > "$(state_file Caddyfile)"
 
 if curl -fs http://localhost:2019/config/ >/dev/null 2>&1; then

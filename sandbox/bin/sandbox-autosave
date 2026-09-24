@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
-# Safety net: every SANDBOX_AUTOSAVE_MINUTES run sandbox-save.
+# Safety net: every N minutes run sandbox-save. N comes from
+# /state/autosave-minutes (changed live by the manager), 0 switches it off.
 source sandbox-lib
-interval="${SANDBOX_AUTOSAVE_MINUTES:-10}"
+n=0
 while true; do
-	sleep "$((interval * 60))"
+	sleep 60
+	interval="$(read_state autosave-minutes)"
+	interval="${interval:-${SANDBOX_AUTOSAVE_MINUTES:-10}}"
+	[ "$interval" = "0" ] && { n=0; continue; }
+	n=$((n + 1))
+	[ "$n" -ge "$interval" ] || continue
+	n=0
 	sandbox-save --skip-checks 2>&1 | grep -v -E "^nothing to push$" | sed "s/^/$(date '+%Y-%m-%d %H:%M:%S') /" || true
 done

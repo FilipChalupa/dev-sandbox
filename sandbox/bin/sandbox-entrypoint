@@ -3,7 +3,10 @@
 # the rules file for Claude, then start Caddy, the Claude Remote Control
 # server (in tmux), the autosave loop and the status writer.
 set -euo pipefail
+env_branch="${SANDBOX_BRANCH:-}"   # the manager's configuration wins at start
 source sandbox-lib
+[ -n "$env_branch" ] && SANDBOX_BRANCH="$env_branch"
+export SANDBOX_BRANCH
 
 mkdir -p "$SANDBOX_STATE_DIR" "$SANDBOX_WORKSPACE" "$CLAUDE_CONFIG_DIR"
 chmod 700 "$SANDBOX_STATE_DIR" 2>/dev/null || true
@@ -17,6 +20,9 @@ chmod 600 "$(state_file preview-password)"
 repo_url="${SANDBOX_REPO_URL:-}"
 token="${SANDBOX_GIT_TOKEN:-$(read_state git-token)}"
 repo_url="$(to_https_url "$repo_url")"   # token auth needs https
+# Runtime-changeable settings live in files; the environment seeds them.
+write_state autosave-minutes "${SANDBOX_AUTOSAVE_MINUTES:-10}"
+write_state lan-enabled "${SANDBOX_LAN_PREVIEW:-1}"
 git config --global safe.directory '*'
 git config --global init.defaultBranch main
 git config --global push.autoSetupRemote true
@@ -110,7 +116,7 @@ trap 'log "shutting down"; sandbox-unshare >/dev/null 2>&1 || true; tmux kill-se
 
 sandbox-caddy-reload >/dev/null
 start_service caddy "exec caddy run --config $(state_file Caddyfile) >> $(state_file caddy.log) 2>&1"
-[ "${SANDBOX_AUTOSAVE_MINUTES:-10}" != "0" ] && start_service autosave "exec sandbox-autosave >> $(state_file autosave.log) 2>&1"
+start_service autosave "exec sandbox-autosave >> $(state_file autosave.log) 2>&1"
 start_service status "exec sandbox-status-loop"
 start_service ports "exec sandbox-port-watch >> $(state_file port-watch.log) 2>&1"
 start_service thumb "exec sandbox-thumb-loop >> $(state_file thumb.log) 2>&1"

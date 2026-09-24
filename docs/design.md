@@ -119,6 +119,17 @@ UI:
   sandbox needs the person, a web app manifest so the manager can be added
   to the Dock, and a form that asks for the repository first and derives the
   name from it,
+- settings apply live where possible: memory and CPU (Docker `update`),
+  restart policy, developer instructions (rules rewritten in place), autosave
+  interval (read from a state file every minute), the phone preview (the
+  port is always published, Caddy answers 403 while it is off) and the
+  working branch (switched in place when the tree has no tracked changes);
+  only the repository URL, the token user and the host port still need a
+  restart, and the card says so,
+- a history of what was sent to the developer (time, commits, head) in the
+  changes dialog,
+- keyboard: N opens the new sandbox form, Escape closes dialogs; with a
+  single sandbox its main button has focus,
 - English and Czech, switchable.
 
 ### Sandbox container
@@ -204,7 +215,8 @@ CI runs both before building images.
 - The session link printed by the server has the form
   `https://claude.ai/code?environment=env_…`.
 - Caddy's `handle_errors` must be limited to 502/503, otherwise it swallows
-  the 401 challenge of basic auth.
+  the 401 challenge of basic auth; and it cannot live inside a `handle`
+  block, only at site level.
 - Anything that polls `git status` next to Claude must use
   `--no-optional-locks`, otherwise Claude's own git commands hit
   `index.lock: File exists`.

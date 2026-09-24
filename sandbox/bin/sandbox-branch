@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Usage: sandbox-branch <name>
+# Switches the working branch without a restart. Refuses when the tree has
+# uncommitted changes (exit 2) or during a merge/rebase (exit 3).
+set -uo pipefail
+source sandbox-lib
+new="${1:?usage: sandbox-branch <name>}"
+cd "$SANDBOX_WORKSPACE" || exit 1
+[ -d .git ] || { echo "not a git repository"; exit 1; }
+if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ] || [ -f .git/MERGE_HEAD ]; then echo "merge or rebase in progress"; exit 3; fi
+# Untracked files travel along with a checkout; only tracked changes block it.
+if [ -n "$(git --no-optional-locks status --porcelain --untracked-files=no)" ]; then echo "uncommitted changes, save first"; exit 2; fi
+if [ "$(git branch --show-current)" != "$new" ]; then
+	if git show-ref --verify --quiet "refs/heads/$new"; then
+		git checkout -q "$new"
+	elif git remote get-url origin >/dev/null 2>&1 && git ls-remote --exit-code --heads origin "$new" >/dev/null 2>&1; then
+		git fetch -q origin "$new" && git checkout -q -b "$new" --track "origin/$new"
+	else
+		git checkout -q -b "$new"
+	fi || { echo "checkout failed"; exit 1; }
+fi
+write_state branch "$new"
+export SANDBOX_BRANCH="$new"
+sandbox-rules-write >/dev/null
+sandbox-status-write
+echo "on branch $new"

@@ -19,8 +19,9 @@ if [ -d .git ]; then
 	today="$(git log --since=midnight --format='%h %s' 2>/dev/null | head -n 30 | jq -R . | jq -s .)"
 	changed="$(git --no-optional-locks status --porcelain 2>/dev/null | head -n 40 | cut -c4- | jq -R . | jq -s .)"
 	shortstat="$(git --no-optional-locks diff --shortstat 2>/dev/null | sed 's/^ *//')"
+	sends="$(tail -n 20 "$(state_file sends.log)" 2>/dev/null | jq -R 'split("\t") | {at: .[0], count: (.[1] | tonumber? // 0), sha: .[2], subject: .[3]}' | jq -s 'reverse')"
 else
-	dirty=0; branch=""; ahead=0; last=""; remote=""; today='[]'; changed='[]'; shortstat=""
+	dirty=0; branch=""; ahead=0; last=""; remote=""; today='[]'; changed='[]'; shortstat=""; sends='[]'
 fi
 if tunnel_running; then tunnel="$(tunnel_url)"; else tunnel=""; fi
 if grep -qx "$(upstream_port)" <<<"$(sandbox-ports)"; then dev_up=true; else dev_up=false; fi
@@ -62,11 +63,13 @@ jq -n \
 	--argjson today "${today:-[]}" \
 	--argjson changed "${changed:-[]}" \
 	--arg shortstat "$shortstat" \
+	--argjson sends "${sends:-[]}" \
+	--argjson lanEnabled "$(lan_enabled && echo true || echo false)" \
 	'{
 		name: $name,
-		git: { branch: $branch, remote: $remote, dirty: $dirty, ahead: $ahead, lastCommit: $last, today: $today, changed: $changed, shortstat: $shortstat },
+		git: { branch: $branch, remote: $remote, dirty: $dirty, ahead: $ahead, lastCommit: $last, today: $today, changed: $changed, shortstat: $shortstat, sends: $sends },
 		claude: { loggedIn: $loggedIn, email: $email, serverRunning: $running, supervisorRunning: $tmuxUp, sessionUrl: $session },
-		preview: { url: $preview, upstreamPort: ($port | tonumber), devServerUp: $devUp, proxyUp: $caddyUp, imageAt: (if $thumbAt > 0 then ($thumbAt | todate) else "" end), tunnelUrl: $tunnel, user: $user, password: $pw },
+		preview: { url: $preview, upstreamPort: ($port | tonumber), devServerUp: $devUp, proxyUp: $caddyUp, lanEnabled: $lanEnabled, imageAt: (if $thumbAt > 0 then ($thumbAt | todate) else "" end), tunnelUrl: $tunnel, user: $user, password: $pw },
 		lastActivity: (if $lastActivity > 0 then ($lastActivity | todate) else "" end),
 		updatedAt: (now | todate)
 	}'

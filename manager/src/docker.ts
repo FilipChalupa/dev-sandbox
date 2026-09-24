@@ -12,7 +12,7 @@ const containerName = (name: string) => config.containerPrefix + name
 // Settings that only take effect when the container is created again
 // (limits, restart policy and instructions are applied live, see applyLive).
 export function configFingerprint(s: SandboxConfig) {
-	const relevant = [s.repoUrl, s.branch, s.gitUsername, s.autosaveMinutes, s.lanPreview, s.hostPort]
+	const relevant = [s.repoUrl, s.gitUsername, s.hostPort]
 	return createHash('sha1').update(JSON.stringify(relevant)).digest('hex').slice(0, 12)
 }
 
@@ -103,6 +103,7 @@ export async function start(sandbox: SandboxConfig) {
 			`SANDBOX_REPO_URL=${sandbox.repoUrl}`,
 			`SANDBOX_BRANCH=${sandbox.branch}`,
 			`SANDBOX_GIT_USERNAME=${sandbox.gitUsername ?? ''}`,
+			`SANDBOX_LAN_PREVIEW=${sandbox.lanPreview ? 1 : 0}`,
 			`SANDBOX_AUTOSAVE_MINUTES=${sandbox.autosaveMinutes}`,
 			`SANDBOX_PREVIEW_URL=http://localhost:${sandbox.hostPort}`,
 		],
@@ -115,8 +116,10 @@ export async function start(sandbox: SandboxConfig) {
 			],
 			PortBindings: {
 				'8080/tcp': [{ HostIp: '127.0.0.1', HostPort: String(sandbox.hostPort) }],
-				// The basic-auth listener on all interfaces, for phones on the same network.
-				...(sandbox.lanPreview ? { '8081/tcp': [{ HostIp: '0.0.0.0', HostPort: String(lanPort(sandbox)) }] } : {}),
+				// The basic-auth listener on all interfaces, for phones on the same
+				// network. Always published; Caddy inside answers 403 while the
+				// setting is off, so toggling needs no restart.
+				'8081/tcp': [{ HostIp: '0.0.0.0', HostPort: String(lanPort(sandbox)) }],
 			},
 			Memory: Math.round(sandbox.memoryGb * 1024 ** 3),
 			MemorySwap: Math.round(sandbox.memoryGb * 1024 ** 3),
@@ -131,10 +134,18 @@ export async function start(sandbox: SandboxConfig) {
 }
 
 // Apply what Docker and the sandbox accept without a restart.
-export async function applyLive(sandbox: SandboxConfig, changed: { limits: boolean; autostart: boolean; instructions: boolean }) {
+export async function applyLive(sandbox: SandboxConfig, changed: { limits: boolean; autostart: boolean; instructions: boolean; autosave: boolean; lan: boolean; branch: boolean }) {
 	const c = docker.getContainer(containerName(sandbox.name))
 	const info = await c.inspect().catch(() => null)
-	if (!info?.State.Running) return
+	if (!info?.State.Running) return { branchSwitched: true }
+	let branchSwitched = true
+	if (changed.autosave) await run(sandbox.name, ['bash', '-c', `printf '%s' '${sandbox.autosaveMinutes}' > /state/autosave-minutes`], 10_000)
+	if (changed.lan) await run(sandbox.name, ['bash', '-c', `printf '%s' '${sandbox.lanPreview ? 1 : 0}' > /state/lan-enabled && sandbox-caddy-reload && sandbox-status-write`], 30_000)
+	if (changed.branch) {
+		const r = await run(sandbox.name, ['sandbox-branch', sandbox.branch], 60_000)
+		branchSwitched = r.code === 0
+		if (!branchSwitched) console.warn('branch switch deferred:', r.output)
+	}
 	if (changed.limits || changed.autostart) {
 		await c.update({
 			...(changed.limits ? { Memory: Math.round(sandbox.memoryGb * 1024 ** 3), MemorySwap: Math.round(sandbox.memoryGb * 1024 ** 3), NanoCpus: Math.round(sandbox.cpus * 1e9) } : {}),
@@ -142,6 +153,7 @@ export async function applyLive(sandbox: SandboxConfig, changed: { limits: boole
 		})
 	}
 	if (changed.instructions) await run(sandbox.name, ['sandbox-rules-write'], 30_000)
+	return { branchSwitched }
 }
 
 export async function startedAt(name: string) {
