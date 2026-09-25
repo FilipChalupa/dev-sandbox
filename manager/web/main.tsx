@@ -169,6 +169,25 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 		}
 	}, [list, notify])
 
+	// Native install prompt (Chrome, Edge): keep the event, fire it on click.
+	const [installEvent, setInstallEvent] = useState<any>(null)
+	const [installed, setInstalled] = useState(() => matchMedia('(display-mode: standalone)').matches)
+	useEffect(() => {
+		const onPrompt = (e: Event) => { e.preventDefault(); setInstallEvent(e) }
+		const onInstalled = () => { setInstalled(true); setInstallEvent(null) }
+		window.addEventListener('beforeinstallprompt', onPrompt)
+		window.addEventListener('appinstalled', onInstalled)
+		return () => { window.removeEventListener('beforeinstallprompt', onPrompt); window.removeEventListener('appinstalled', onInstalled) }
+	}, [])
+	const installApp = async () => {
+		if (installed) return toast('info', t('installed'))
+		if (!installEvent) return toast('info', t('installAppHint'))
+		installEvent.prompt()
+		const choice = await installEvent.userChoice.catch(() => null)
+		if (choice?.outcome === 'accepted') setInstalled(true)
+		setInstallEvent(null)
+	}
+
 	// Tell the manager the person's time zone (sandboxes get it as TZ).
 	useEffect(() => {
 		const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -325,7 +344,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 							} },
 							'sep',
 							{ label: `${t('notifications')}${notify ? ' ✓' : ''}`, icon: 'alert', onClick: toggleNotify },
-							{ label: t('installApp'), icon: 'phone', onClick: () => toast('info', t('installAppHint')) },
+							...(installed ? [] : [{ label: t('installApp'), icon: 'phone', onClick: installApp }]),
 							'sep',
 							{ label: t('logoutClaude'), icon: 'login', danger: true, onClick: () => setModal({ kind: 'logout' }) },
 							'sep',
