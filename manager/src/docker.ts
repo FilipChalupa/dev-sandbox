@@ -225,9 +225,9 @@ async function ensureImage() {
 export const isLocalImage = () => !config.image.includes('/')
 
 type PullEvent = { status?: string; id?: string; progress?: string; progressDetail?: { current?: number; total?: number } }
-export async function pullImage(onProgress: (line: string, ev?: PullEvent) => void) {
-	if (isLocalImage()) throw new Error(`"${config.image}" is a local image, there is nothing to download. Rebuild it instead.`)
-	const stream = await docker.pull(config.image)
+export async function pullImage(onProgress: (line: string, ev?: PullEvent) => void, imageName = config.image) {
+	if (!imageName.includes('/')) throw new Error(`"${imageName}" is a local image, there is nothing to download. Rebuild it instead.`)
+	const stream = await docker.pull(imageName)
 	await new Promise<void>((resolve, reject) => {
 		docker.modem.followProgress(
 			stream,
@@ -290,7 +290,7 @@ export async function ensureSelfRestartPolicy() {
 export async function selfUpdate() {
 	const self = await docker.getContainer(os.hostname()).inspect()
 	const image = self.Config.Image
-	if (image.includes('/')) await pullImage(() => {})
+	if (image.includes('/')) await pullImage(() => {}, image)   // the manager's own image, not the sandbox one
 	// Only the variables given at `docker run`; the image's own ENV (BUILD_SHA,
 	// PATH, NODE_VERSION, …) must come from the new image, not the old one.
 	const keep = new Set(['SANDBOXES_HOST_DIR', 'SANDBOXES_DATA_DIR', 'SANDBOX_IMAGE', 'SANDBOX_FIRST_PORT', 'HOST_LAN_NAME', 'PORT'])
