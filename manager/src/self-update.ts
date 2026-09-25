@@ -12,10 +12,14 @@ try {
 } catch (e: any) {
 	if (e?.statusCode !== 404) throw e
 }
+// The spec may come from an older manager that passed the whole environment;
+// keep only what was given at `docker run` so the image's own ENV applies.
+const keep = new Set(['SANDBOXES_HOST_DIR', 'SANDBOXES_DATA_DIR', 'SANDBOX_IMAGE', 'SANDBOX_FIRST_PORT', 'HOST_LAN_NAME', 'PORT'])
+const env = (spec.env as string[] ?? []).filter((e) => keep.has(e.split('=')[0]))
 const c = await docker.createContainer({
 	name: spec.name,
 	Image: spec.image,
-	Env: spec.env,
+	Env: env,
 	ExposedPorts: spec.exposed,
 	HostConfig: { Binds: spec.binds, PortBindings: spec.ports, RestartPolicy: spec.restart },
 })
