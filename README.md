@@ -16,7 +16,14 @@ Status: **working prototype.** The sandbox image and the manager UI run;
 what is left is real-world use. See [docs/design.md](docs/design.md) for the
 architecture and decisions.
 
-## Install (Mac)
+## Install
+
+Needs Docker and one paid Claude account (Pro, Max, or a seat on a Team or
+Enterprise plan; on Team and Enterprise an owner has to enable Remote Control
+in the Claude Code admin settings). The colleague logs in once, inside the
+manager.
+
+### macOS
 
 1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
    and turn on "Start Docker Desktop when you sign in".
@@ -27,29 +34,76 @@ architecture and decisions.
    curl -fsSL https://raw.githubusercontent.com/FilipChalupa/dev-sandbox/main/installer/install.sh | bash
    ```
 
-   Both do the same: pull the images, start the manager, set up the small
-   host helper, and open the UI.
-3. The manager opens at <http://localhost:8787>. Create a sandbox, start it,
-   log in to Claude the first time (the card walks you through it), then
-   "Open in claude.ai".
+3. The manager opens at <http://localhost:8787>.
 
-"Update" in the UI pulls the newest sandbox image (restart a sandbox to use
-it), "Update manager" replaces the manager itself. Running the installer
-again does the same as "Update manager".
+The installer also sets up a small helper (a launchd job) that provides the
+phone preview links and opening a project folder in Finder.
 
-Requirements on the Claude side: a Pro, Max, Team or Enterprise account. On
-Team and Enterprise plans an owner has to enable Remote Control in the Claude
-Code admin settings.
+### Linux (Ubuntu and others)
 
-## Layout
+1. Install Docker: either [Docker Engine](https://docs.docker.com/engine/install/ubuntu/)
+   with your user in the `docker` group, or Docker Desktop for Linux.
+2. Run the same installer:
 
-- `sandbox/` – the sandbox container image and the scripts that run inside it
-  ([README](sandbox/README.md)).
-- `manager/` – the web UI that creates, starts and stops sandboxes through the
-  Docker API.
-- `installer/` – the one-shot installer for the colleague's machine (and
-  `uninstall.sh`).
-- `docs/` – design notes.
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/FilipChalupa/dev-sandbox/main/installer/install.sh | bash
+   ```
+
+3. Open <http://localhost:8787>.
+
+The helper runs as a systemd user service (`dev-sandbox-host-info`); folders
+open with `xdg-open`. With Docker Desktop for Linux the installer finds its
+socket under `~/.docker/desktop/`. Files in `~/Sandboxes` are written by the
+sandbox user (uid 1000); on a desktop where your user has another uid, change
+their owner with `sudo chown -R $USER ~/Sandboxes` when you need to edit them.
+
+### Windows
+
+Install Docker Desktop, then run this in PowerShell (the installer script is
+for macOS and Linux):
+
+```powershell
+mkdir $HOME\Sandboxes -Force
+docker run -d --name sandbox-manager --restart unless-stopped `
+  -p 127.0.0.1:8787:8787 -v /var/run/docker.sock:/var/run/docker.sock `
+  -v "$HOME\Sandboxes:/sandboxes" -e "SANDBOXES_HOST_DIR=$HOME\Sandboxes" `
+  ghcr.io/filipchalupa/dev-sandbox-manager:latest
+```
+
+There is no helper on Windows: the phone preview links and opening the
+folder from the UI are unavailable, everything else works.
+
+### First steps in the UI
+
+Create a sandbox (or click the link from your developer), start it, log in
+to Claude the first time (the card walks you through it), then
+"Open in claude.ai".
+
+### Update and uninstall
+
+"Update manager" in the gear menu replaces the manager itself; "Update
+sandboxes" pulls the newest sandbox image (restart a sandbox to use it).
+Running the installer again does the same as "Update manager" and is the way
+to update a manager older than September 2026 (which could not update itself).
+`installer/uninstall.sh` removes everything; add `--purge` to delete
+`~/Sandboxes` too.
+
+### Without the installer
+
+The manager is one container, so Docker Desktop's own UI can start it:
+search for `ghcr.io/filipchalupa/dev-sandbox-manager:latest` in **Images**,
+pull it, click **Run** and fill in the optional settings:
+
+| Field | Value |
+| --- | --- |
+| Container name | `sandbox-manager` |
+| Host port | `8787` (container port 8787) |
+| Volume 1 | host `/var/run/docker.sock` → container `/var/run/docker.sock` |
+| Volume 2 | host `/Users/<you>/Sandboxes` → container `/sandboxes` |
+| Environment | `SANDBOXES_HOST_DIR` = `/Users/<you>/Sandboxes` |
+
+The manager sets its own restart policy on first start, so it comes back
+with Docker either way.
 
 ## Handing a project to the colleague
 

@@ -9,6 +9,10 @@ if [ "$(uname)" = "Darwin" ]; then
 	PLIST="$HOME/Library/LaunchAgents/com.dev-sandbox.host-info.plist"
 	launchctl unload "$PLIST" >/dev/null 2>&1 || true
 	rm -f "$PLIST"
+elif command -v systemctl >/dev/null 2>&1; then
+	systemctl --user disable --now dev-sandbox-host-info.service >/dev/null 2>&1 || true
+	rm -f "$HOME/.config/systemd/user/dev-sandbox-host-info.service"
+	systemctl --user daemon-reload >/dev/null 2>&1 || true
 fi
 if [ "${1:-}" = "--purge" ]; then rm -rf "$DIR"; echo "Removed $DIR"; else echo "Kept $DIR"; fi
 echo "Done."

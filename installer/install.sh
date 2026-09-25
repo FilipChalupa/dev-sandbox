@@ -94,9 +94,70 @@ SH
 PL
 	launchctl unload "$PLIST" >/dev/null 2>&1 || true
 	launchctl load "$PLIST"
+elif [ "$(uname)" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
+	LAN_NAME="$(hostname -s).local"
+	mkdir -p "$DIR/.manager/bin" "$HOME/.config/systemd/user"
+	cat > "$DIR/.manager/bin/host-info.sh" <<'SH'
+#!/bin/bash
+# Host helper for the sandbox manager on Linux (runs as a systemd user
+# service): writes the machine's addresses on the local network to host.json
+# every minute and executes "open" requests from .manager/open/ with xdg-open.
+dir="$(cd "$(dirname "$0")/.." && pwd)"
+mkdir -p "$dir/open"
+write_host_json() {
+	local default_if entries="" json first name
+	default_if="$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')"
+	while read -r _ iface _ cidr _; do
+		local ip="${cidr%/*}"
+		case "$iface" in lo|docker*|br-*|veth*|virbr*|tun*|tap*|wg*|tailscale*|ipsec*|vmnet*) continue ;; esac
+		case "$ip" in 169.254.*|192.168.65.*|127.*) continue ;; esac
+		case "$ip" in 100.*) o="${ip#100.}"; o="${o%%.*}"; [ "$o" -ge 64 ] && [ "$o" -le 127 ] && continue ;; esac
+		local rank=2; [ "$iface" = "$default_if" ] && rank=0; case "$iface" in en*|eth*|wl*) [ $rank = 2 ] && rank=1 ;; esac
+		entries="$entries$rank|$iface|$iface|$ip\n"
+	done < <(ip -4 -o addr show 2>/dev/null)
+	json="$(printf "$entries" | sort | awk -F'|' 'NF==4 {printf "%s{\"iface\":\"%s\",\"label\":\"%s\",\"ip\":\"%s\"}", (n++ ? "," : ""), $2, $3, $4}')"
+	first="$(printf "$entries" | sort | head -n 1 | cut -d'|' -f4)"
+	name="$(hostname -s).local"
+	printf '{"lanIp":"%s","lanIps":[%s],"hostName":"%s","helper":true,"updatedAt":"%s"}\n' "$first" "$json" "$name" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$dir/host.json.tmp" \
+		&& mv "$dir/host.json.tmp" "$dir/host.json"
+}
+tick=60
+while true; do
+	if [ "$tick" -ge 60 ]; then write_host_json; tick=0; fi
+	for req in "$dir"/open/*; do
+		[ -f "$req" ] || continue
+		target="$(head -n 1 "$req")"
+		rm -f "$req"
+		case "$target" in
+			"$(dirname "$dir")"/*|http://*|https://*) xdg-open "$target" >/dev/null 2>&1 & ;;
+		esac
+	done
+	sleep 1
+	tick=$((tick + 1))
+done
+SH
+	chmod +x "$DIR/.manager/bin/host-info.sh"
+	cat > "$HOME/.config/systemd/user/dev-sandbox-host-info.service" <<UNIT
+[Unit]
+Description=Sandbox manager host helper (network addresses, open requests)
+
+[Service]
+ExecStart=$DIR/.manager/bin/host-info.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+UNIT
+	systemctl --user daemon-reload
+	systemctl --user enable --now dev-sandbox-host-info.service >/dev/null 2>&1 || true
 else
 	LAN_NAME="$(hostname -s).local"
 fi
+
+# Docker Desktop on Linux keeps its socket under the home directory.
+SOCK=/var/run/docker.sock
+[ -S "$SOCK" ] || { [ -S "$HOME/.docker/desktop/docker.sock" ] && SOCK="$HOME/.docker/desktop/docker.sock"; }
 
 say "Downloading the manager and the sandbox image (this can take a few minutes the first time)…"
 docker pull "$MANAGER_IMAGE"
@@ -108,7 +169,7 @@ docker run -d \
 	--name sandbox-manager \
 	--restart unless-stopped \
 	-p "127.0.0.1:$PORT:8787" \
-	-v /var/run/docker.sock:/var/run/docker.sock \
+	-v "$SOCK:/var/run/docker.sock" \
 	-v "$DIR:/sandboxes" \
 	-e "SANDBOXES_HOST_DIR=$DIR" \
 	-e "SANDBOX_IMAGE=$SANDBOX_IMAGE" \
