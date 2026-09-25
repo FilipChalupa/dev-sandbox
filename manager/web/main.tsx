@@ -725,19 +725,22 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 		: st ? <button className="primary" disabled><Spinner /> {t('connecting')}</button>
 		: null
 
+	const canSend = Boolean(st && (st.git.dirty > 0 || st.git.ahead > 0 || !st.git.remote))
 	const menuItems = [
 		...(running ? [{ label: t('stop'), icon: 'stop', onClick: () => run(() => api.stop(s.name)) }] : []),
 		{ label: t('edit'), icon: 'settings', onClick: () => setModal({ kind: 'edit', s }) },
+		{ header: t('groupProject') },
 		{ label: t('changesToday'), icon: 'history', onClick: () => setModal({ kind: 'changes', name: s.name }), disabled: !running },
 		{ label: t('devMessage'), icon: 'send', onClick: () => setModal({ kind: 'devmsg', name: s.name }), disabled: !s.repoUrl },
+		{ header: t('groupDevServer') },
 		{ label: t('devStop'), icon: 'stop', onClick: () => action('dev-stop'), disabled: !(running && st?.preview.devServerUp) },
 		{ label: t('devLog'), icon: 'log', onClick: () => setModal({ kind: 'devlog', name: s.name }), disabled: !running },
+		{ header: t('groupSandbox') },
 		{ label: t('doctor'), icon: 'stethoscope', onClick: () => setModal({ kind: 'doctor', name: s.name }), disabled: !running },
-		'sep' as const,
 		{ label: t('terminal'), icon: 'terminal', onClick: () => setModal({ kind: 'terminal', name: s.name, cmd: 'shell' }), disabled: !running },
 		{ label: t('restartClaude'), icon: 'restart', onClick: () => action('restart-claude'), disabled: !running },
 		{ label: t('logs'), icon: 'log', onClick: () => setModal({ kind: 'logs', name: s.name }) },
-		'sep' as const,
+		{ header: t('groupDanger') },
 		...(s.repoUrl ? [{ label: t('reset'), icon: 'restart', onClick: () => setModal({ kind: 'reset', s }), danger: true }] : []),
 		{ label: t('delete'), icon: 'trash', onClick: () => setModal({ kind: 'delete', s }), danger: true },
 	]
@@ -828,13 +831,27 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 								</a>
 							)}
 							<div className="links">
-								<a className="button" href={st.preview.url} target="_blank" rel="noreferrer"><Icon name="globe" /> {t('openPreview')}</a>
+								{st.preview.devServerUp ? (
+									<a className="button" href={st.preview.url} target="_blank" rel="noreferrer"><Icon name="globe" /> {t('openPreview')}</a>
+								) : (
+									<button
+										disabled={waiting}
+										onClick={async () => {
+											// Open the tab now (popup blockers), point it at the preview once the server is up.
+											const w = window.open('about:blank', '_blank')
+											await action('dev-start')
+											if (w) w.location.href = st.preview.url
+										}}
+									>
+										{busy === 'dev' || pending ? <Spinner /> : <Icon name="globe" />} {t('startAndOpen')}
+									</button>
+								)}
 								{st.preview.tunnelUrl ? (
 									<button onClick={() => action('unshare')} disabled={waiting}>{busy === 'share' || pending ? <Spinner /> : <Icon name="x" />} {t('unshare')}</button>
 								) : (
 									<button onClick={() => action('share')} disabled={waiting} className={busy === 'share' || pending ? 'busy' : ''}>{busy === 'share' || pending ? <Spinner /> : <Icon name="share" />} {busy === 'share' || pending ? t('sharing') : t('share')}</button>
 								)}
-								<button onClick={() => action('save')} disabled={waiting} className={busy === 'save' ? 'busy' : ''}>{busy === 'save' ? <Spinner /> : <Icon name="send" />} {busy === 'save' ? t('sending') : t('sendToDev')}</button>
+								<button onClick={() => action('save')} disabled={waiting || !canSend} title={canSend ? undefined : t('nothingToSend')} className={busy === 'save' ? 'busy' : ''}>{busy === 'save' ? <Spinner /> : <Icon name="send" />} {busy === 'save' ? t('sending') : t('sendToDev')}</button>
 							</div>
 							{st.preview.tunnelUrl && (
 								<Access title={t('shared')} icon="globe" url={st.preview.tunnelUrl} user={st.preview.user} password={st.preview.password} onQr={(text) => setModal({ kind: 'qr', text, title: t('shared') })} />
@@ -1256,6 +1273,8 @@ function SandboxForm({ existing, initial, onSubmit, onCancel }: { existing?: San
 	return (
 		<Modal title={existing ? <><Icon name="settings" /> {t('edit')}: {existing.name}</> : <><Icon name="plus" /> {t('newSandbox')}</>} onClose={onCancel}>
 			<form onSubmit={submit} className="form">
+				<fieldset>
+				<legend>{t('sectionProject')}</legend>
 				<label>
 					{t('repoUrl')}
 					<input value={repoUrl} onChange={(e) => onRepoUrl(e.target.value)} placeholder="https://bitbucket.org/workspace/repo.git" autoFocus={!existing} />
@@ -1289,6 +1308,9 @@ function SandboxForm({ existing, initial, onSubmit, onCancel }: { existing?: San
 					<textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} rows={3} />
 					<small>{t('instructionsHint')}</small>
 				</label>
+				</fieldset>
+				<fieldset>
+				<legend>{t('sectionBehaviour')}</legend>
 				{!existing && (
 					<label className="check">
 						<input type="checkbox" checked={startNow} onChange={(e) => setStartNow(e.target.checked)} /> {t('startNow')}
@@ -1300,11 +1322,15 @@ function SandboxForm({ existing, initial, onSubmit, onCancel }: { existing?: San
 				<label className="check">
 					<input type="checkbox" checked={lanPreview} onChange={(e) => setLanPreview(e.target.checked)} /> {t('lanPreview')}
 				</label>
+				<label>{t('idleStop')}<input type="number" min={0} step={1} value={idleStopHours} onChange={(e) => setIdleStopHours(Number(e.target.value))} /></label>
+				</fieldset>
+				<fieldset>
+				<legend>{t('sectionResources')}</legend>
 				<div className="grid3">
 					<label>{t('memory')}<input type="number" min={1} step={1} value={memoryGb} onChange={(e) => setMemoryGb(Number(e.target.value))} /></label>
 					<label>{t('cpus')}<input type="number" min={0.5} step={0.5} value={cpus} onChange={(e) => setCpus(Number(e.target.value))} /></label>
-					<label>{t('idleStop')}<input type="number" min={0} step={1} value={idleStopHours} onChange={(e) => setIdleStopHours(Number(e.target.value))} /></label>
 				</div>
+				</fieldset>
 				{!existing && (repoUrl || token) && (
 					<div className="invite">
 						<Copy text={inviteLink()} label={t('inviteLink')} />

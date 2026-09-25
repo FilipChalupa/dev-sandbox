@@ -60,7 +60,7 @@ export function Menu({ label, icon, items, align = 'right', badge }: {
 	icon?: string
 	badge?: boolean
 	align?: 'left' | 'right'
-	items: ({ label: string; icon?: string; onClick: () => void; danger?: boolean; badge?: boolean; disabled?: boolean } | 'sep' | { custom: ReactNode })[]
+	items: ({ label: string; icon?: string; onClick: () => void; danger?: boolean; badge?: boolean; disabled?: boolean } | 'sep' | { custom: ReactNode } | { header: string })[]
 }) {
 	const [open, setOpen] = useState(false)
 	const ref = useRef<HTMLDivElement>(null)
@@ -89,6 +89,8 @@ export function Menu({ label, icon, items, align = 'right', badge }: {
 					{items.map((it, i) =>
 						it === 'sep' ? (
 							<hr key={i} />
+						) : 'header' in it ? (
+							<div key={i} className="menu-header">{it.header}</div>
 						) : 'custom' in it ? (
 							<div key={i} className="menu-custom">{it.custom}</div>
 						) : (
