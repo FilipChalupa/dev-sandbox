@@ -20,7 +20,7 @@ export type Sandbox = {
 	settingsPending: boolean
 	stoppedReason: { reason: 'idle'; hours: number; at: string } | null
 	status: null | {
-		git: { branch: string; remote: string; dirty: number; ahead: number; lastCommit: string; today: string[]; changed: string[]; shortstat: string; sends: { at: string; count: number; sha: string; subject: string }[] }
+		git: { branch: string; remote: string; dirty: number; ahead: number; lastCommit: string; today: string[]; changed: string[]; shortstat: string; sends: { at: string; count: number; sha: string; subject: string }[]; remoteCheck: { ok: boolean | null; at?: string; error?: string } }
 		claude: { loggedIn: boolean; email: string; serverRunning: boolean; supervisorRunning: boolean; sessionUrl: string }
 		preview: { url: string; upstreamPort: number; devServerUp: boolean; proxyUp: boolean; lanEnabled: boolean; imageAt: string; tunnelUrl: string; user: string; password: string }
 		lastActivity: string
@@ -62,7 +62,7 @@ export const api = {
 	update_image: () => call<UpdateProgress>('POST', '/api/update'),
 	update_progress: () => call<UpdateProgress>('GET', '/api/update'),
 	self_update: () => call<{ ok: boolean }>('POST', '/api/self-update'),
-	action: (name: string, what: 'share' | 'unshare' | 'save' | 'restart-claude' | 'dev-start' | 'dev-stop') =>
+	action: (name: string, what: 'share' | 'unshare' | 'save' | 'restart-claude' | 'dev-start' | 'dev-stop' | 'remote-check') =>
 		call<{ ok: boolean; output: string }>('POST', `/api/sandboxes/${name}/${what}`),
 	save: (name: string, force: boolean) => call<{ ok: boolean; checksFailed?: boolean; output: string }>('POST', `/api/sandboxes/${name}/save?force=${force ? 1 : 0}`),
 	checkRepo: (body: { repoUrl: string; token: string; username?: string }) => call<{ ok: boolean; branches: string[]; error: string }>('POST', '/api/check-repo', body),

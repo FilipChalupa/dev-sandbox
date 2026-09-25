@@ -148,6 +148,11 @@ UI:
 - "Back up settings" downloads configs, tokens and instructions as JSON,
   "Restore from backup" recreates missing sandboxes from such a file,
 - a QR code of the claude.ai session link, to continue on a phone,
+- the git remote is checked with the token shortly after start and every six
+  hours (and on every push); an unreachable remote shows on the card with an
+  explanation and a recheck, before unsent work piles up,
+- a project without a repository has a "Save" button instead of "Send to
+  developer", so nobody believes the work left the computer,
 - English and Czech, switchable.
 
 ### Sandbox container

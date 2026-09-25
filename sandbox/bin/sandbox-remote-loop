@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Is the git remote still reachable with our token? Checked shortly after
+# start and then every six hours (tokens expire, repositories move), so the
+# card can say so before unsent work piles up. Result: /state/remote-check.json
+source sandbox-lib
+sleep 45
+while true; do
+	sandbox-remote-check >/dev/null 2>&1 || true
+	sleep 21600
+done

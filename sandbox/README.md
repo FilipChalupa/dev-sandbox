@@ -65,6 +65,8 @@ can start sessions in it. Status for the manager is in `/state/status.json`.
 - `sandbox-screenshot [path|url] [out.png] [--mobile]`: render the preview with
   headless Chromium (for Claude to check its work).
 - `sandbox-status`: print the status JSON.
+- `sandbox-remote-check`: is the git remote reachable with the token (also
+  runs after start and every six hours).
 - `sandbox-doctor`: one JSON line per health check (login, server, proxy, dev
   server, git remote, identity, disk, browser tools).
 - `sandbox-claude-start`: restart the Claude Remote Control server.

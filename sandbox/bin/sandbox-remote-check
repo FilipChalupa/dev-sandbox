@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# One reachability check of the remote; writes remote-check.json and prints it.
+set -uo pipefail
+source sandbox-lib
+cd "$SANDBOX_WORKSPACE" 2>/dev/null || exit 0
+out_file="$(state_file remote-check.json)"
+if ! git remote get-url origin >/dev/null 2>&1; then
+	rm -f "$out_file"; echo '{"ok":null}'; exit 0
+fi
+if out="$(GIT_TERMINAL_PROMPT=0 timeout 25 git ls-remote --exit-code --heads origin 2>&1)"; then
+	jq -n -c --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{ok:true, at:$at, error:""}' > "$out_file"
+else
+	jq -n -c --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg e "$(tail -n 1 <<<"$out")" '{ok:false, at:$at, error:$e}' > "$out_file"
+fi
+cat "$out_file"
+sandbox-status-write

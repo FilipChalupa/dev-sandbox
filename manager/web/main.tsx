@@ -671,13 +671,13 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 	const open = expanded ?? (running || Boolean(s.failure))
 	const working = Boolean(st && isRecent(st.lastActivity, 60_000))
 
-	const action = async (what: 'share' | 'unshare' | 'save' | 'restart-claude' | 'dev-start' | 'dev-stop') => {
-		setBusy(what === 'unshare' ? 'share' : what === 'dev-start' ? 'dev' : what === 'restart-claude' || what === 'dev-stop' ? '' : what)
+	const action = async (what: 'share' | 'unshare' | 'save' | 'restart-claude' | 'dev-start' | 'dev-stop' | 'remote-check') => {
+		setBusy(what === 'unshare' ? 'share' : what === 'dev-start' ? 'dev' : what === 'save' ? 'save' : what === 'share' ? 'share' : '')
 		try {
 			if (what === 'save') {
 				try {
 					const r = await api.save(s.name, false)
-					toast('ok', `${t('sent')} (${r.output.split('\n').pop()})`)
+					toast('ok', s.repoUrl ? `${t('sent')} (${r.output.split('\n').pop()})` : t('savedLocal'))
 					if (/pushed/.test(r.output)) setModal({ kind: 'devmsg', name: s.name })
 				} catch (e) {
 					const msg = e instanceof Error ? e.message : String(e)
@@ -762,7 +762,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 				{primary}
 				<Menu icon="more" label={undefined} items={menuItems} />
 			</div>
-			{running && st && (stage.step === 3 || st.preview.proxyUp === false || s.outdated || s.settingsPending) && (
+			{running && st && (stage.step === 3 || st.preview.proxyUp === false || s.outdated || s.settingsPending || st.git.remoteCheck?.ok === false) && (
 				<div className="card-pills">
 					{stage.step === 3 && (
 						st.preview.devServerUp ? (
@@ -776,6 +776,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 					{!st.claude.serverRunning && stage.step === 3 && <Pill tone="error">{t('claudeOffline')}</Pill>}
 					{st.preview.proxyUp === false && <Pill tone="error">{t('proxyDown')}</Pill>}
 					{s.outdated && <Pill tone="warn">{t('outdated')} · <button className="pill-link" onClick={() => run(() => api.start(s.name))}>{t('restart')}</button></Pill>}
+					{st.git.remoteCheck?.ok === false && <Pill tone="error">{t('remoteBroken')}</Pill>}
 					{s.settingsPending && !s.outdated && <Pill tone="warn">{t('settingsPending')} · <button className="pill-link" onClick={() => run(() => api.start(s.name))}>{t('restart')}</button></Pill>}
 				</div>
 			)}
@@ -851,7 +852,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 								) : (
 									<button onClick={() => action('share')} disabled={waiting} className={busy === 'share' || pending ? 'busy' : ''}>{busy === 'share' || pending ? <Spinner /> : <Icon name="share" />} {busy === 'share' || pending ? t('sharing') : t('share')}</button>
 								)}
-								<button onClick={() => action('save')} disabled={waiting || !canSend} title={canSend ? undefined : t('nothingToSend')} className={busy === 'save' ? 'busy' : ''}>{busy === 'save' ? <Spinner /> : <Icon name="send" />} {busy === 'save' ? t('sending') : t('sendToDev')}</button>
+								<button onClick={() => action('save')} disabled={waiting || !canSend} title={canSend ? (s.repoUrl ? undefined : t('savedLocal')) : t('nothingToSend')} className={busy === 'save' ? 'busy' : ''}>{busy === 'save' ? <Spinner /> : <Icon name={s.repoUrl ? 'send' : 'check'} />} {busy === 'save' ? t('sending') : s.repoUrl ? t('sendToDev') : t('saveLocal')}</button>
 							</div>
 							{st.preview.tunnelUrl && (
 								<Access title={t('shared')} icon="globe" url={st.preview.tunnelUrl} user={st.preview.user} password={st.preview.password} onQr={(text) => setModal({ kind: 'qr', text, title: t('shared') })} />

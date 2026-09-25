@@ -366,6 +366,7 @@ app.post('/api/sandboxes/:name/dev-start', async (c) => {
 	}
 })
 app.post('/api/sandboxes/:name/dev-stop', action(['sandbox-dev-stop']))
+app.post('/api/sandboxes/:name/remote-check', action(['sandbox-remote-check']))
 
 app.get('/api/sandboxes/:name/login', (c) => json(login.status(c.req.param('name'))))
 app.post('/api/sandboxes/:name/login', async (c) => {

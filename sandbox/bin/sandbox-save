@@ -40,8 +40,12 @@ if git remote get-url origin >/dev/null 2>&1 && git rev-parse --verify -q HEAD >
 		if out="$(git push -u origin "$SANDBOX_BRANCH" 2>&1)"; then
 			# History for the UI: time, commits sent, head, subject.
 			printf '%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$count" "$(git rev-parse --short HEAD)" "$(git log -1 --format=%s)" >> "$(state_file sends.log)"
+			jq -n -c --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{ok:true, at:$at, error:""}' > "$(state_file remote-check.json)"
 			echo "pushed $SANDBOX_BRANCH"
 		else
+			if grep -qiE "authentication|denied|403|401|could not read|not found" <<<"$out"; then
+				jq -n -c --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg e "$(tail -n 1 <<<"$out")" '{ok:false, at:$at, error:$e}' > "$(state_file remote-check.json)"
+			fi
 			echo "push failed: $(tail -n 3 <<<"$out")"; exit 4
 		fi
 	else
