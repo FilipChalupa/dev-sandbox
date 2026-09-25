@@ -233,14 +233,22 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 		setBusy(true)
 		toast('info', t('updatingManager'))
 		try {
+			const before = (await api.info().catch(() => null))?.manager.build
 			await api.self_update()
+			// Reload only once the *new* manager answers: a different build, or
+			// after the old one went away for a moment.
+			let wentAway = false
 			const poll = setInterval(async () => {
 				try {
-					await api.info()
-					clearInterval(poll)
-					location.reload()
-				} catch {}
-			}, 2000)
+					const now = (await api.info()).manager.build
+					if (now !== before || wentAway) {
+						clearInterval(poll)
+						location.reload()
+					}
+				} catch {
+					wentAway = true
+				}
+			}, 1500)
 			setTimeout(() => {
 				clearInterval(poll)
 				setBusy(false)

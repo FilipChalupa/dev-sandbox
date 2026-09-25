@@ -291,10 +291,13 @@ export async function selfUpdate() {
 	const self = await docker.getContainer(os.hostname()).inspect()
 	const image = self.Config.Image
 	if (image.includes('/')) await pullImage(() => {})
+	// Only the variables given at `docker run`; the image's own ENV (BUILD_SHA,
+	// PATH, NODE_VERSION, …) must come from the new image, not the old one.
+	const keep = new Set(['SANDBOXES_HOST_DIR', 'SANDBOXES_DATA_DIR', 'SANDBOX_IMAGE', 'SANDBOX_FIRST_PORT', 'HOST_LAN_NAME', 'PORT'])
 	const spec = {
 		name: self.Name.replace(/^\//, ''),
 		image,
-		env: self.Config.Env ?? [],
+		env: (self.Config.Env ?? []).filter((e) => keep.has(e.split('=')[0])),
 		binds: self.HostConfig.Binds ?? [],
 		ports: self.HostConfig.PortBindings ?? {},
 		exposed: self.Config.ExposedPorts ?? {},
