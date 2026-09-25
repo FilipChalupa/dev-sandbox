@@ -192,9 +192,14 @@ a.meta-link { color: inherit; }
 .meta-link:hover { color: var(--link); text-decoration: underline; }
 .thumb { display: block; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); background: #fff; max-width: 320px; }
 .thumb img { display: block; width: 100%; height: auto; }
-.grip { cursor: grab; color: var(--muted); font-size: 14px; letter-spacing: -3px; user-select: none; padding: 0 2px; }
+.grip { cursor: grab; color: var(--muted); font-size: 14px; letter-spacing: -3px; user-select: none; padding: 2px 4px; border: none; background: none; border-radius: 6px; touch-action: none; }
+.grip:hover { background: var(--off-bg); color: var(--text); }
 .grip:active { cursor: grabbing; }
-.card.dragging { opacity: .5; }
+.card { position: relative; }
+.card.dragging { z-index: 5; box-shadow: 0 12px 32px -8px rgba(0,0,0,.45); border-color: var(--primary); opacity: .95; }
+.cards { user-select: none; }
+.cards .card * { user-select: text; }
+.cards .card.dragging * { user-select: none; }
 /* phone: the head wraps, the main action takes its own line */
 @media (max-width: 560px) {
 	.card { padding: 12px; }

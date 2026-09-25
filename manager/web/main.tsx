@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import QRCode from 'qrcode'
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { Loading, SharedLoadingIndicatorContextProvider, SharedProgressLoadingIndicator, useLocalLoading, useMirrorLoading } from 'shared-loading-indicator'
 import { api, type LoginState, type Sandbox, type UpdateCheck, type UpdateProgress } from './api'
 import { LangContext, detectLang, languages, saveLang, useT, type Lang } from './i18n'
@@ -259,15 +262,26 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 		}
 	}
 
-	// Order is the person's (drag and drop); new sandboxes go last.
-	const sorted = useMemo(() => (list ? [...list].sort((a, b) => a.order - b.order) : null), [list])
-	const [dragging, setDragging] = useState<string | null>(null)
-	const dropOn = async (target: string) => {
-		if (!dragging || dragging === target || !sorted) return
-		const names = sorted.map((x) => x.name).filter((n) => n !== dragging)
-		names.splice(names.indexOf(target), 0, dragging)
-		setDragging(null)
-		await run(() => api.order(names))
+	// Order is the person's (drag and drop); new sandboxes go last. The
+	// local order is kept so a drop shows immediately, before the refresh.
+	const fromServer = useMemo(() => (list ? [...list].sort((a, b) => a.order - b.order) : null), [list])
+	const [localOrder, setLocalOrder] = useState<string[] | null>(null)
+	useEffect(() => setLocalOrder(null), [fromServer?.map((s) => s.name).join(',')])
+	const sorted = useMemo(() => {
+		if (!fromServer) return null
+		if (!localOrder) return fromServer
+		return [...fromServer].sort((a, b) => localOrder.indexOf(a.name) - localOrder.indexOf(b.name))
+	}, [fromServer, localOrder])
+	const sensors = useSensors(
+		useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+		useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+	)
+	const onDragEnd = async (e: DragEndEvent) => {
+		if (!sorted || !e.over || e.active.id === e.over.id) return
+		const names = sorted.map((x) => x.name)
+		const next = arrayMove(names, names.indexOf(String(e.active.id)), names.indexOf(String(e.over.id)))
+		setLocalOrder(next)
+		await run(() => api.order(next))
 	}
 
 	return (
@@ -347,24 +361,27 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 			) : sorted.length === 0 ? (
 				<Welcome onCreate={() => setModal({ kind: 'create' })} />
 			) : (
-				<ul className="cards">
-					{sorted.map((s) => (
-						<SandboxCard
-							key={s.name}
-							s={s}
-							focus={sorted.length === 1}
-							usage={stats[s.name] ?? null}
-							host={host}
-							lang={lang}
-							lanHost={lanHost}
-							lanHosts={lanHosts}
-							onLanHost={chooseLan}
-							run={run}
-							setModal={setModal}
-							drag={{ active: dragging === s.name, onStart: () => setDragging(s.name), onDrop: () => dropOn(s.name), onEnd: () => setDragging(null) }}
-						/>
-					))}
-				</ul>
+				<DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+					<SortableContext items={sorted.map((s) => s.name)} strategy={verticalListSortingStrategy}>
+						<ul className="cards">
+							{sorted.map((s) => (
+								<SandboxCard
+									key={s.name}
+									s={s}
+									focus={sorted.length === 1}
+									usage={stats[s.name] ?? null}
+									host={host}
+									lang={lang}
+									lanHost={lanHost}
+									lanHosts={lanHosts}
+									onLanHost={chooseLan}
+									run={run}
+									setModal={setModal}
+								/>
+							))}
+						</ul>
+					</SortableContext>
+				</DndContext>
 			)}
 
 			{modal?.kind === 'create' && (
@@ -617,10 +634,9 @@ function detectPlatform(): 'mac' | 'win' | 'other' {
 }
 const platform = detectPlatform()
 
-function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost, run, setModal, drag }: {
+function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost, run, setModal }: {
 	s: Sandbox
 	focus?: boolean
-	drag: { active: boolean; onStart: () => void; onDrop: () => void; onEnd: () => void }
 	usage: { cpuPercent: number; memMb: number; memLimitMb: number } | null
 	host: { hostDir: string; helper: boolean }
 	lang: string
@@ -632,6 +648,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 }) {
 	const t = useT()
 	const { toast } = useToast()
+	const sortable = useSortable({ id: s.name })
 	const st = s.status
 	const stage = stageOf(s)
 	const running = s.container.running
@@ -727,12 +744,12 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 
 	return (
 		<li
-			className={`card ${stage.tone}${open ? '' : ' collapsed'}${drag.active ? ' dragging' : ''}`}
-			onDragOver={(e) => e.preventDefault()}
-			onDrop={(e) => { e.preventDefault(); drag.onDrop() }}
+			ref={sortable.setNodeRef}
+			style={{ transform: CSS.Translate.toString(sortable.transform), transition: sortable.transition }}
+			className={`card ${stage.tone}${open ? '' : ' collapsed'}${sortable.isDragging ? ' dragging' : ''}`}
 		>
 			<div className="card-head">
-				<span className="grip" draggable title={t('dragHint')} onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; drag.onStart() }} onDragEnd={drag.onEnd}>⋮⋮</span>
+				<button type="button" className="grip" title={t('dragHint')} aria-label={t('dragHint')} ref={sortable.setActivatorNodeRef} {...sortable.attributes} {...sortable.listeners}>⋮⋮</button>
 				<button className="icon-btn chevron" onClick={() => setExpanded(!open)} aria-label={open ? t('collapse') : t('expand')} aria-expanded={open}>
 					<Icon name="chevron" />
 				</button>
