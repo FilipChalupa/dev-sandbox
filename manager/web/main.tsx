@@ -156,25 +156,36 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 		} else toast('error', t('notificationsDenied'))
 	}
 	const seen = useMemo(() => new Map<string, string>(), [])
+	const hidden = () => document.visibilityState !== 'visible'
 	useEffect(() => {
 		if (!list) return
+		// Failures are per sandbox …
 		for (const s of list) {
-			const state = s.failure ? 'failed' : s.container.running && s.status && !s.status.claude.loggedIn ? 'login' : ''
+			const state = s.failure ? 'failed' : ''
 			const prev = seen.get(s.name)
 			seen.set(s.name, state)
-			if (!notify || !state || prev === undefined || prev === state || document.visibilityState === 'visible') continue
+			if (!notify || !state || prev === undefined || prev === state || !hidden()) continue
 			try {
-				new Notification(t('title'), { body: state === 'failed' ? t('notifyFailed', { name: s.name }) : t('notifyLogin', { name: s.name }), icon: '/icon.svg' })
+				new Notification(t('title'), { body: t('notifyFailed', { name: s.name }), icon: '/icon.svg' })
+			} catch {}
+		}
+		// … the login is shared: one notification for all of them.
+		const needsLogin = list.some((s) => s.container.running && s.status && !s.status.claude.loggedIn) ? 'login' : ''
+		const prev = seen.get('*login')
+		seen.set('*login', needsLogin)
+		if (notify && needsLogin && prev !== undefined && prev !== needsLogin && hidden()) {
+			try {
+				new Notification(t('title'), { body: t('notifyLogin'), icon: '/icon.svg' })
 			} catch {}
 		}
 	}, [list, notify])
 
 	// Shared Claude login: state from the manager, banner above the cards.
 	const [loginState, setLoginState] = useState<Check | null>(null)
+	const loadLogin = () => api.readiness().then((r) => setLoginState(r.login)).catch(() => {})
 	useEffect(() => {
-		const load = () => api.readiness().then((r) => setLoginState(r.login)).catch(() => {})
-		load()
-		const id = setInterval(load, 5000)
+		loadLogin()
+		const id = setInterval(loadLogin, 5000)
 		return () => clearInterval(id)
 	}, [])
 	const [loginStarting, setLoginStarting] = useState(false)
@@ -462,7 +473,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 			{modal?.kind === 'login' && (
 				<Login
 					loggedIn={Boolean(loginState?.ok) || (list?.some((s) => s.status?.claude.loggedIn) ?? false)}
-					onClose={close}
+					onClose={() => { close(); loadLogin() }}
 					onTerminal={(name) => setModal({ kind: 'terminal', name, cmd: 'login' })}
 				/>
 			)}
@@ -481,7 +492,8 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 					<p>{t('logoutConfirm')}</p>
 					<div className="actions">
 						<button onClick={close}>{t('cancel')}</button>
-						<button className="danger-btn" onClick={async () => { await run(() => api.logoutClaude(), t('loggedOut')); close() }}>{t('logoutClaude')}</button>
+						<button className="danger-btn" onClick={async () => { await run(() => api.logoutClaude(), t('loggedOut')); await loadLogin(); close() }}>{t('logoutClaude')}</button>
+						<button className="primary" onClick={async () => { await run(() => api.logoutClaude()); await loadLogin(); close(); openLogin() }}><Icon name="login" /> {t('loginAgain')}</button>
 					</div>
 				</Modal>
 			)}
