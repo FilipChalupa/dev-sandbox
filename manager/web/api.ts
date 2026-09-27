@@ -68,6 +68,12 @@ export const api = {
 		call<{ ok: boolean; output: string }>('POST', `/api/sandboxes/${name}/${what}`),
 	save: (name: string, force: boolean) => call<{ ok: boolean; checksFailed?: boolean; output: string }>('POST', `/api/sandboxes/${name}/save?force=${force ? 1 : 0}`),
 	checkRepo: (body: { repoUrl: string; token: string; username?: string }) => call<{ ok: boolean; branches: string[]; error: string }>('POST', '/api/check-repo', body),
+	claudeLogin: {
+		status: () => call<({ sandbox: string | null } & Partial<LoginState>)>('GET', '/api/claude/login'),
+		start: () => call<{ sandbox: string } & LoginState>('POST', '/api/claude/login'),
+		code: (code: string) => call<{ sandbox: string } & LoginState>('POST', '/api/claude/login/code', { code }),
+		cancel: () => call<unknown>('DELETE', '/api/claude/login'),
+	},
 	logoutClaude: () => call<{ ok: boolean }>('POST', '/api/claude/logout'),
 	devLog: (name: string) => fetch(`/api/sandboxes/${name}/dev-log`).then((r) => r.text()),
 	stats: () => call<Record<string, { cpuPercent: number; memMb: number; memLimitMb: number } | null>>('GET', '/api/stats'),

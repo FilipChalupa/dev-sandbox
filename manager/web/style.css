@@ -225,3 +225,7 @@ legend { padding: 0 6px; font-size: 12px; text-transform: uppercase; letter-spac
 .welcome-ready { width: 100%; max-width: 620px; text-align: left; margin-top: 12px; }
 .ready { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text); }
 .ready h3 { margin: 0; }
+.banner { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 14px; border-radius: 12px; background: var(--warn-bg); border: 1px solid var(--warn); }
+.banner span { flex: 1; }
+.who { font-weight: normal; margin-left: 10px; display: inline-flex; align-items: center; gap: 4px; }
+@media (max-width: 560px) { .who { display: none; } .banner { flex-wrap: wrap; } }

@@ -67,8 +67,10 @@ UI:
 - list of sandboxes with status (running, stopped, waiting for Claude login),
   and a three-step guide on each card until it is ready: start, log in, open,
 - Start, Stop, Delete (dialog with an option to delete the files), New,
-- Claude login without a terminal: the manager runs `claude auth login` in
-  the sandbox, shows the OAuth link and passes the pasted code back,
+- Claude login without a terminal, as one shared action above the cards
+  (the login is common to all sandboxes): the manager runs `claude auth
+  login` in any running sandbox, starting one if needed, shows the OAuth
+  link and passes the pasted code back; the header shows who is logged in,
 - "Open in claude.ai/code" (session URL read from the Remote Control server output),
 - preview link `http://localhost:<port>` with "project server is running / not
   running", Share / Stop sharing with the tunnel URL and password and copy buttons,

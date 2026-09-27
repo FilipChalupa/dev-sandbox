@@ -345,6 +345,41 @@ app.post('/api/check-repo', async (c) => {
 	}
 })
 
+// Claude login is shared by all sandboxes, but the CLI runs inside one:
+// pick any running sandbox for the flow (the UI starts one when needed).
+async function runningSandbox() {
+	for (const s of await store.readAll()) if ((await dk.containerState(s.name)).running) return s.name
+	return null
+}
+app.get('/api/claude/login', async () => {
+	const name = await runningSandbox()
+	return json(name ? { sandbox: name, ...(login.status(name) ?? {}) } : { sandbox: null })
+})
+app.post('/api/claude/login', async () => {
+	try {
+		const name = await runningSandbox()
+		if (!name) return json({ error: 'no running sandbox' }, 409)
+		return json({ sandbox: name, ...(await login.start(name)) })
+	} catch (e) {
+		return fail(e)
+	}
+})
+app.post('/api/claude/login/code', async (c) => {
+	try {
+		const name = await runningSandbox()
+		if (!name) return json({ error: 'no running sandbox' }, 409)
+		const { code } = await c.req.json()
+		return json({ sandbox: name, ...login.code(name, String(code ?? '')) })
+	} catch (e) {
+		return fail(e)
+	}
+})
+app.delete('/api/claude/login', async () => {
+	const name = await runningSandbox()
+	if (name) login.cancel(name)
+	return json({ ok: true })
+})
+
 app.post('/api/claude/logout', async () => {
 	try {
 		const list = await store.readAll()

@@ -37,7 +37,7 @@ type Modal =
 	| { kind: 'edit'; s: Sandbox }
 	| { kind: 'terminal'; name: string; cmd: 'shell' | 'login' | 'claude' }
 	| { kind: 'logs'; name: string }
-	| { kind: 'login'; name: string }
+	| { kind: 'login' }
 	| { kind: 'delete'; s: Sandbox }
 	| { kind: 'reset'; s: Sandbox }
 	| { kind: 'devmsg'; name: string }
@@ -168,6 +168,36 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 			} catch {}
 		}
 	}, [list, notify])
+
+	// Shared Claude login: state from the manager, banner above the cards.
+	const [loginState, setLoginState] = useState<Check | null>(null)
+	useEffect(() => {
+		const load = () => api.readiness().then((r) => setLoginState(r.login)).catch(() => {})
+		load()
+		const id = setInterval(load, 5000)
+		return () => clearInterval(id)
+	}, [])
+	const [loginStarting, setLoginStarting] = useState(false)
+	const openLogin = async () => {
+		if (!list) return
+		if (!list.some((s) => s.container.running)) {
+			const first = list[0]
+			if (!first) return
+			setLoginStarting(true)
+			toast('info', t('loginNeedsSandbox'))
+			try {
+				await run(() => api.start(first.name))
+				for (let i = 0; i < 40; i++) {
+					await new Promise((r) => setTimeout(r, 1500))
+					const l = await api.list()
+					if (l.find((x) => x.name === first.name)?.status) break
+				}
+			} finally {
+				setLoginStarting(false)
+			}
+		}
+		setModal({ kind: 'login' })
+	}
 
 	// Native install prompt (Chrome, Edge): keep the event, fire it on click.
 	const [installEvent, setInstallEvent] = useState<any>(null)
@@ -306,7 +336,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 	return (
 		<main>
 			<header>
-				<h1><Icon name="bolt" size={22} /> {t('title')}</h1>
+				<h1><Icon name="bolt" size={22} /> {t('title')}{loginState?.ok && <span className="muted small who" title={t('loggedInAs', { email: loginState.detail })}><Icon name="check" size={12} /> {loginState.detail}</span>}</h1>
 				<div className="actions">
 					<Menu
 						icon="settings"
@@ -371,6 +401,13 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 				</div>
 			)}
 			{offline && <p className="offline"><Icon name="alert" /> {t('errDocker')}</p>}
+			{loginState && !loginState.ok && (list?.length ?? 0) > 0 && (
+				<div className="banner">
+					<Icon name="login" />
+					<span>{loginStarting ? t('loginBannerStarting') : t('loginBanner')}</span>
+					<button className="primary" disabled={loginStarting} onClick={openLogin}>{loginStarting ? <Spinner /> : <Icon name="login" />} {t('loginClaude')}</button>
+				</div>
+			)}
 
 			{sorted === null ? (
 				<>
@@ -424,10 +461,9 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 			{modal?.kind === 'logs' && <Logs name={modal.name} onClose={close} />}
 			{modal?.kind === 'login' && (
 				<Login
-					name={modal.name}
-					loggedIn={list?.find((s) => s.name === modal.name)?.status?.claude.loggedIn ?? false}
+					loggedIn={Boolean(loginState?.ok) || (list?.some((s) => s.status?.claude.loggedIn) ?? false)}
 					onClose={close}
-					onTerminal={() => setModal({ kind: 'terminal', name: modal.name, cmd: 'login' })}
+					onTerminal={(name) => setModal({ kind: 'terminal', name, cmd: 'login' })}
 				/>
 			)}
 			{modal?.kind === 'diagnostics' && <Diagnostics lang={lang} onClose={close} ready={<Readiness compact notify={notify} onNotify={toggleNotify} installed={installed} canInstall={Boolean(installEvent)} onInstall={installApp} />} />}
@@ -771,7 +807,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 
 	const primary =
 		!running ? <button className="primary" autoFocus={focus} onClick={() => run(async () => { const r = await api.start(s.name); if (r.portNote) toast('info', t('portMoved', r.portNote)) })}><Icon name="play" /> {t('start')}</button>
-		: stage.attention ? <button className="primary" autoFocus={focus} onClick={() => setModal({ kind: 'login', name: s.name })}><Icon name="login" /> {t('loginClaude')}</button>
+		: stage.attention ? null   // the login is shared: the banner above the cards handles it
 		: st && st.claude.sessionUrl ? (
 			<>
 				<a className="button primary" autoFocus={focus} href={st.claude.sessionUrl} target="_blank" rel="noreferrer"><Icon name="external" /> {t('openClaude')}</a>
@@ -952,32 +988,33 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 
 // ---------------------------------------------------------------- dialogs
 
-function Login({ name, loggedIn, onClose, onTerminal }: { name: string; loggedIn: boolean; onClose: () => void; onTerminal: () => void }) {
+function Login({ loggedIn, onClose, onTerminal }: { loggedIn: boolean; onClose: () => void; onTerminal: (sandbox: string) => void }) {
 	const t = useT()
 	const [state, setState] = useState<LoginState | null>(null)
+	const [sandbox, setSandbox] = useState('')
 	const [code, setCode] = useState('')
 	const [error, setError] = useState('')
 	const [sentAt, setSentAt] = useState(0)
 	useEffect(() => {
 		let alive = true
-		api.login.start(name).then((s) => alive && setState(s)).catch((e) => setError(String(e)))
+		api.claudeLogin.start().then((s) => { if (alive) { setState(s); setSandbox(s.sandbox) } }).catch((e) => setError(humanizeError(String(e), t)))
 		const id = setInterval(async () => {
 			try {
-				const s = await api.login.status(name)
-				if (alive && s) setState(s)
+				const s = await api.claudeLogin.status()
+				if (alive && s.url !== undefined) setState(s as LoginState)
 			} catch {}
 		}, 2000)
 		return () => {
 			alive = false
 			clearInterval(id)
 		}
-	}, [name])
+	}, [])
 	const success = loggedIn || Boolean(state?.success)
 	const failed = state?.done && !success
 	useMirrorLoading(!success && !failed && !error && (!state?.url || (sentAt > 0 && Date.now() - sentAt < 15_000 && !state?.invalidCode)))
 	useEffect(() => {
 		if (success) {
-			if (loggedIn) api.login.cancel(name).catch(() => {})
+			if (loggedIn) api.claudeLogin.cancel().catch(() => {})
 			const id = setTimeout(onClose, loggedIn ? 1200 : 4000)
 			return () => clearTimeout(id)
 		}
@@ -986,7 +1023,7 @@ function Login({ name, loggedIn, onClose, onTerminal }: { name: string; loggedIn
 		e.preventDefault()
 		try {
 			setSentAt(Date.now())
-			setState(await api.login.code(name, code))
+			setState(await api.claudeLogin.code(code))
 			setCode('')
 		} catch (e) {
 			setError(e instanceof Error ? e.message : String(e))
@@ -1029,7 +1066,7 @@ function Login({ name, loggedIn, onClose, onTerminal }: { name: string; loggedIn
 				</ol>
 			)}
 			<div className="actions">
-				<button className="link" onClick={onTerminal}><Icon name="terminal" size={14} /> {t('terminal')}</button>
+				{sandbox && <button className="link" onClick={() => onTerminal(sandbox)}><Icon name="terminal" size={14} /> {t('terminal')}</button>}
 				<button onClick={onClose}>{t('close')}</button>
 			</div>
 		</Modal>
