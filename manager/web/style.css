@@ -220,3 +220,4 @@ a.meta-link { color: inherit; }
 fieldset { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px 12px; margin: 0; display: grid; gap: 12px; min-width: 0; }
 legend { padding: 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
 .grid3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.row-actions { display: inline-flex; gap: 2px; }

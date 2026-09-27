@@ -536,7 +536,7 @@ function Copy({ text, label, icon = true }: { text: string; label?: string; icon
 	)
 }
 
-function Access({ title, icon, url, user, password, extra, onQr }: { title: string; icon: string; url: string; user: string; password: string; extra?: ReactNode; onQr: (text: string) => void }) {
+function Access({ title, icon, url, user, password, extra, onQr, onRotate }: { title: string; icon: string; url: string; user: string; password: string; extra?: ReactNode; onQr: (text: string) => void; onRotate?: () => void }) {
 	const t = useT()
 	const full = withAuth(url, user, password)
 	return (
@@ -546,7 +546,7 @@ function Access({ title, icon, url, user, password, extra, onQr }: { title: stri
 				<div className="access-title"><Icon name={icon} /> {title}{extra}</div>
 				<div className="access-row"><span className="k">{t('address')}</span><a className="v" href={url} target="_blank" rel="noreferrer">{url}</a><Copy text={url} /></div>
 				<div className="access-row"><span className="k">{t('user')}</span><code className="v">{user}</code><Copy text={user} /></div>
-				<div className="access-row"><span className="k">{t('passwordLabel')}</span><code className="v">{password}</code><Copy text={password} /></div>
+				<div className="access-row"><span className="k">{t('passwordLabel')}</span><code className="v">{password}</code><span className="row-actions"><Copy text={password} />{onRotate && <button className="link" title={t('newPassword')} onClick={onRotate}><Icon name="refresh" size={14} /></button>}</span></div>
 				<div className="access-row"><span className="k" /><Copy text={full} label={t('copyLinkWithPassword')} /></div>
 			</div>
 		</div>
@@ -690,7 +690,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 	const open = expanded ?? (running || Boolean(s.failure))
 	const working = Boolean(st && isRecent(st.lastActivity, 60_000))
 
-	const action = async (what: 'share' | 'unshare' | 'save' | 'restart-claude' | 'dev-start' | 'dev-stop' | 'remote-check') => {
+	const action = async (what: 'share' | 'unshare' | 'save' | 'restart-claude' | 'dev-start' | 'dev-stop' | 'remote-check' | 'password-rotate') => {
 		setBusy(what === 'unshare' ? 'share' : what === 'dev-start' ? 'dev' : what === 'save' ? 'save' : what === 'share' ? 'share' : '')
 		try {
 			if (what === 'save') {
@@ -707,6 +707,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 			}
 			const r = await api.action(s.name, what)
 			if (what === 'restart-claude' || what === 'dev-stop') toast('ok', r.output)
+			if (what === 'password-rotate') toast('ok', t('passwordRotated'))
 			if (what === 'dev-start') toast('ok', `${t('devStarted')} ${r.output.split('\n').pop() ?? ''}`)
 			const until = Date.now() + 45_000
 			if (what === 'share') setPending({ check: (x) => Boolean(x.status?.preview.tunnelUrl), until })
@@ -874,7 +875,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 								<button onClick={() => action('save')} disabled={waiting || !canSend} title={canSend ? (s.repoUrl ? undefined : t('savedLocal')) : t('nothingToSend')} className={busy === 'save' ? 'busy' : ''}>{busy === 'save' ? <Spinner /> : <Icon name={s.repoUrl ? 'send' : 'check'} />} {busy === 'save' ? t('sending') : s.repoUrl ? t('sendToDev') : t('saveLocal')}</button>
 							</div>
 							{st.preview.tunnelUrl && (
-								<Access title={t('shared')} icon="globe" url={st.preview.tunnelUrl} user={st.preview.user} password={st.preview.password} onQr={(text) => setModal({ kind: 'qr', text, title: t('shared') })} />
+								<Access title={t('shared')} icon="globe" url={st.preview.tunnelUrl} user={st.preview.user} password={st.preview.password} onQr={(text) => setModal({ kind: 'qr', text, title: t('shared') })} onRotate={() => confirm(t('newPasswordConfirm')) && action('password-rotate')} />
 							)}
 							{s.lanPreview && lanHost && st.preview.lanEnabled !== false && (
 								<Access
@@ -884,6 +885,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 									user={st.preview.user}
 									password={st.preview.password}
 									onQr={(text) => setModal({ kind: 'qr', text, title: t('lanUrl') })}
+									onRotate={() => confirm(t('newPasswordConfirm')) && action('password-rotate')}
 									extra={lanHosts.length > 1 && (
 										<select className="inline" value={lanHost} onChange={(e) => onLanHost(e.target.value)} aria-label={t('lanIp')}>
 											{lanHosts.map((h) => <option key={h.host} value={h.host}>{h.label === h.host ? h.host : `${h.label} (${h.host})`}</option>)}
