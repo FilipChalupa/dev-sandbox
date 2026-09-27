@@ -449,6 +449,34 @@ app.get('/api/info', async () => {
 	return json({ image: config.image, hostDir: config.hostDir, lanHosts: hosts, lanHost: hosts[0]?.host ?? '', helper: (await hostInfo()).helper, manager: managerVersion })
 })
 
+// What is in place on this computer, for the welcome screen and diagnostics.
+app.get('/api/readiness', async () => {
+	let docker = { ok: false, detail: '' }
+	try {
+		const v = await dk.docker.version()
+		docker = { ok: true, detail: `Docker ${v.Version}` }
+	} catch (e) {
+		docker = { ok: false, detail: e instanceof Error ? e.message : String(e) }
+	}
+	const host = await hostInfo()
+	let image = { ok: false, detail: '' }
+	try {
+		const i = await dk.docker.getImage(config.image).inspect()
+		image = { ok: true, detail: `${Math.round(i.Size / 1e6)} MB` }
+	} catch {
+		image = { ok: false, detail: config.image }
+	}
+	let login = { ok: false, detail: '' }
+	try {
+		const cfg = JSON.parse(await fs.readFile(path.join(config.dataDir, '.manager', 'claude', '.claude.json'), 'utf8'))
+		await fs.stat(path.join(config.dataDir, '.manager', 'claude', '.credentials.json'))
+		const email = cfg?.oauthAccount?.emailAddress ?? ''
+		login = { ok: Boolean(email), detail: email }
+	} catch {}
+	const sandboxes = (await store.readAll()).length
+	return json({ docker, helper: { ok: host.helper, detail: host.lanIp || host.hostName }, image, login, sandboxes })
+})
+
 app.get('/api/updates', async () => {
 	const self = await dk.selfImage()
 	const [sandbox, manager] = await Promise.all([registry.check(config.image), self ? registry.check(self) : null])

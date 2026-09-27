@@ -213,7 +213,8 @@ a.meta-link { color: inherit; }
 }
 .checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
 .checks li { display: grid; grid-template-columns: 20px 160px 1fr; gap: 8px; align-items: baseline; }
-.checks li.ok .icon { color: var(--on); } .checks li.bad .icon { color: var(--danger); }
+.checks li.ok .icon { color: var(--on); } .checks li.bad .icon { color: var(--danger); } .checks li.opt .icon { color: var(--muted); transform: rotate(-90deg); }
+.ready .checks li { grid-template-columns: 20px 220px 1fr; }
 .checks .k { font-weight: 600; }
 @media (max-width: 560px) { .checks li { grid-template-columns: 20px 1fr; } .checks li .muted { grid-column: 2; } }
 .menu-header { padding: 8px 10px 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
@@ -221,3 +222,6 @@ fieldset { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12p
 legend { padding: 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
 .grid3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .row-actions { display: inline-flex; gap: 2px; }
+.welcome-ready { width: 100%; max-width: 620px; text-align: left; margin-top: 12px; }
+.ready { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text); }
+.ready h3 { margin: 0; }

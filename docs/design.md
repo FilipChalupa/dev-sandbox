@@ -153,6 +153,8 @@ UI:
   explanation and a recheck, before unsent work piles up,
 - a project without a repository has a "Save" button instead of "Send to
   developer", so nobody believes the work left the computer,
+- a readiness checklist on the welcome screen and in diagnostics: Docker,
+  sandbox image, Claude login, host helper, notifications, installed app,
 - English and Czech, switchable.
 
 ### Sandbox container
@@ -239,8 +241,7 @@ stops and deletes.
 ## Findings from the prototype
 
 - Two sandboxes sharing one Claude config dir both connect to Remote Control,
-  each with its own environment id, without any prompts. Long-term behaviour
-  of the shared token refresh is still unverified in practice.
+  each with its own environment id, without any prompts.
 - The `Enable Remote Control?` consent is `remoteDialogSeen: true` in
   `.claude.json`; workspace trust is `projects[<dir>].hasTrustDialogAccepted`.
   The entrypoint sets both, otherwise the server refuses to start with
@@ -266,5 +267,5 @@ stops and deletes.
 2. Done: manager with list, new, start/stop, claude.ai link, preview link.
 3. Done: embedded terminal, editing repository/token, autosave, image update.
 4. Done: installer (with launchd host-info job and uninstall script), GitHub
-   Actions for the images. Open: a real end-to-end run on a Mac with a Team
-   account, and a user guide with screenshots.
+   Actions for the images. Verified end to end on a Mac (2026-09-27). Open:
+   a user guide with screenshots.

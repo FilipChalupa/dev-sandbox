@@ -5,7 +5,7 @@ import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, us
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Loading, SharedLoadingIndicatorContextProvider, SharedProgressLoadingIndicator, useLocalLoading, useMirrorLoading } from 'shared-loading-indicator'
-import { api, type LoginState, type Sandbox, type UpdateCheck, type UpdateProgress } from './api'
+import { api, type Check, type LoginState, type Sandbox, type UpdateCheck, type UpdateProgress } from './api'
 import { LangContext, detectLang, languages, saveLang, useT, type Lang } from './i18n'
 import { Terminal } from './Terminal'
 import { Icon, Menu, Modal, Pill, Rel, Skeleton, Spinner, ToastProvider, humanizeError, isRecent, useToast } from './ui'
@@ -378,7 +378,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 					<Skeleton />
 				</>
 			) : sorted.length === 0 ? (
-				<Welcome onCreate={() => setModal({ kind: 'create' })} />
+				<Welcome onCreate={() => setModal({ kind: 'create' })} ready={<Readiness notify={notify} onNotify={toggleNotify} installed={installed} canInstall={Boolean(installEvent)} onInstall={installApp} />} />
 			) : (
 				<DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
 					<SortableContext items={sorted.map((s) => s.name)} strategy={verticalListSortingStrategy}>
@@ -430,7 +430,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 					onTerminal={() => setModal({ kind: 'terminal', name: modal.name, cmd: 'login' })}
 				/>
 			)}
-			{modal?.kind === 'diagnostics' && <Diagnostics lang={lang} onClose={close} />}
+			{modal?.kind === 'diagnostics' && <Diagnostics lang={lang} onClose={close} ready={<Readiness compact notify={notify} onNotify={toggleNotify} installed={installed} canInstall={Boolean(installEvent)} onInstall={installApp} />} />}
 			{modal?.kind === 'changes' && <Changes s={list?.find((x) => x.name === modal.name)} name={modal.name} onClose={close} />}
 			{modal?.kind === 'qr' && (
 				<Modal title={modal.title} onClose={close} className="qr-modal">
@@ -590,7 +590,43 @@ function DevLog({ name, onClose }: { name: string; onClose: () => void }) {
 	)
 }
 
-function Welcome({ onCreate }: { onCreate: () => void }) {
+function Readiness({ notify, onNotify, installed, canInstall, onInstall, compact }: { notify: boolean; onNotify: () => void; installed: boolean; canInstall: boolean; onInstall: () => void; compact?: boolean }) {
+	const t = useT()
+	const [r, setR] = useState<{ docker: Check; helper: Check; image: Check; login: Check } | null>(null)
+	useEffect(() => {
+		const load = () => api.readiness().then(setR).catch(() => setR({ docker: { ok: false, detail: '' }, helper: { ok: false, detail: '' }, image: { ok: false, detail: '' }, login: { ok: false, detail: '' } }))
+		load()
+		const id = setInterval(load, 15_000)
+		return () => clearInterval(id)
+	}, [])
+	if (!r) return null
+	const rows: { ok: boolean; optional?: boolean; label: string; hint: string; action?: { label: string; onClick: () => void } }[] = [
+		{ ok: r.docker.ok, label: t('readyDocker'), hint: t('readyDockerNo') },
+		{ ok: r.image.ok, label: t('readyImage'), hint: t('readyImageNo') },
+		{ ok: r.login.ok, label: t('readyLogin') + (r.login.detail ? ` (${r.login.detail})` : ''), hint: t('readyLoginNo') },
+		{ ok: r.helper.ok, optional: true, label: t('readyHelper'), hint: t('readyHelperNo') },
+		{ ok: notify, optional: true, label: t('readyNotify'), hint: t('readyNotifyNo'), action: { label: t('turnOn'), onClick: onNotify } },
+		{ ok: installed, optional: true, label: t('readyApp'), hint: t('readyAppNo'), action: canInstall ? { label: t('install'), onClick: onInstall } : undefined },
+	]
+	const allOk = rows.every((x) => x.ok || x.optional)
+	if (compact && allOk) return <p className="ok-text"><Icon name="check" /> {t('allReady')}</p>
+	return (
+		<div className="ready">
+			<h3>{t('readyTitle')}</h3>
+			<ul className="checks">
+				{rows.map((x) => (
+					<li key={x.label} className={x.ok ? 'ok' : x.optional ? 'opt' : 'bad'}>
+						<Icon name={x.ok ? 'check' : x.optional ? 'chevron' : 'alert'} />
+						<span className="k">{x.label}</span>
+						<span className="muted">{x.ok ? '' : x.hint} {!x.ok && x.action && <button className="link" onClick={x.action.onClick}>{x.action.label}</button>}</span>
+					</li>
+				))}
+			</ul>
+		</div>
+	)
+}
+
+function Welcome({ onCreate, ready }: { onCreate: () => void; ready: ReactNode }) {
 	const t = useT()
 	return (
 		<section className="welcome">
@@ -603,7 +639,7 @@ function Welcome({ onCreate }: { onCreate: () => void }) {
 				<li>{t('welcomeStep3')}</li>
 			</ol>
 			<button className="primary big" onClick={onCreate}><Icon name="plus" /> {t('newSandbox')}</button>
-			<p className="muted small">{t('dockerHint')}</p>
+			<div className="welcome-ready">{ready}</div>
 		</section>
 	)
 }
@@ -1114,7 +1150,7 @@ function Changes({ s, name, onClose }: { s?: Sandbox; name: string; onClose: () 
 	)
 }
 
-function Diagnostics({ lang, onClose }: { lang: string; onClose: () => void }) {
+function Diagnostics({ lang, onClose, ready }: { lang: string; onClose: () => void; ready: ReactNode }) {
 	const t = useT()
 	const [d, setD] = useState<any>(null)
 	const [err, setErr] = useState('')
@@ -1129,6 +1165,7 @@ function Diagnostics({ lang, onClose }: { lang: string; onClose: () => void }) {
 			{!d && !err && <p>{t('loading')}</p>}
 			{d && (
 				<div className="diag">
+					<section>{ready}</section>
 					<section>
 						<h3>{t('diagManager')}</h3>
 						<dl>
