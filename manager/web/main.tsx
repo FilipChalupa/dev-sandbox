@@ -159,15 +159,27 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 	const hidden = () => document.visibilityState !== 'visible'
 	useEffect(() => {
 		if (!list) return
-		// Failures are per sandbox …
+		// Failures and push outcomes are per sandbox …
 		for (const s of list) {
 			const state = s.failure ? 'failed' : ''
 			const prev = seen.get(s.name)
 			seen.set(s.name, state)
-			if (!notify || !state || prev === undefined || prev === state || !hidden()) continue
-			try {
-				new Notification(t('title'), { body: t('notifyFailed', { name: s.name }), icon: '/icon.svg' })
-			} catch {}
+			if (notify && state && prev !== undefined && prev !== state && hidden()) {
+				try {
+					new Notification(t('title'), { body: t('notifyFailed', { name: s.name }), icon: '/icon.svg' })
+				} catch {}
+			}
+			// A push that replaced the server's branch or failed: keyed by its time,
+			// so each outcome notifies once, even when the page was hidden at the time.
+			const push = s.status?.git.push
+			const pushKey = push && (push.reason === 'overwrote' || push.reason === 'rejected') ? `${push.reason}@${push.at}` : ''
+			const prevPush = seen.get(`${s.name}/push`)
+			seen.set(`${s.name}/push`, pushKey)
+			if (notify && pushKey && prevPush !== undefined && prevPush !== pushKey) {
+				try {
+					new Notification(t('title'), { body: push!.reason === 'overwrote' ? t('notifyOverwrote', { name: s.name }) : t('notifyRejected', { name: s.name }), icon: '/icon.svg' })
+				} catch {}
+			}
 		}
 		// … the login is shared: one notification for all of them.
 		const needsLogin = list.some((s) => s.container.running && s.status && !s.status.claude.loggedIn) ? 'login' : ''
