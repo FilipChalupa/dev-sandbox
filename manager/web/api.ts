@@ -23,10 +23,14 @@ export type Sandbox = {
 		git: { branch: string; remote: string; dirty: number; ahead: number; lastCommit: string; today: string[]; changed: string[]; shortstat: string; sends: { at: string; count: number; sha: string; subject: string }[]; remoteCheck: { ok: boolean | null; at?: string; error?: string }; push: { ok: boolean | null; reason?: string; at?: string; detail?: string }; behind: number }
 		claude: { loggedIn: boolean; email: string; serverRunning: boolean; supervisorRunning: boolean; sessionUrl: string }
 		preview: { url: string; upstreamPort: number; devServerUp: boolean; proxyUp: boolean; lanEnabled: boolean; imageAt: string; tunnelUrl: string; user: string; password: string }
+		visits: { last: { at: string; via: 'tunnel' | 'lan'; mobile: boolean; path: string } | null; today: number }
+		usage: { today: Usage; week: Usage; updatedAt: string } | null
 		lastActivity: string
 		updatedAt: string
 	}
 }
+
+export type Usage = { messages: number; input: number; output: number; cacheRead: number; cacheWrite: number }
 
 export type Check = { ok: boolean; detail: string }
 

@@ -571,6 +571,9 @@ function Qr({ text, size = 160, onClick }: { text: string; size?: number; onClic
 	return <img className={`qr${onClick ? ' clickable' : ''}${size > 200 ? ' big' : ''}`} src={src} alt={text} title={onClick ? t('enlargeQr') : t('qrHint')} onClick={onClick} />
 }
 
+const fmtTokens = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)} M` : n >= 1e3 ? `${Math.round(n / 1e3)} k` : String(n))
+const tokensOf = (u: { input: number; output: number; cacheRead: number; cacheWrite: number }) => u.input + u.output + u.cacheRead + u.cacheWrite
+
 const withAuth = (url: string, user: string, pw: string) => url.replace(/^(https?:\/\/)/, `$1${encodeURIComponent(user)}:${encodeURIComponent(pw)}@`)
 
 function Copy({ text, label, icon = true }: { text: string; label?: string; icon?: boolean }) {
@@ -926,6 +929,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 							<Icon name="folder" size={13} /> {folderPath(host.hostDir, s.name)}
 						</button>
 						{running && usage && <span title={t('memoryLimits')}>{t('usage', { cpu: usage.cpuPercent, mem: (usage.memMb / 1024).toFixed(1), limit: (usage.memLimitMb / 1024).toFixed(0) })}</span>}
+						{running && st?.usage && <span title={t('usageHint')}><Icon name="bolt" size={13} /> {t('usageToday')}: {fmtTokens(tokensOf(st.usage.today))} {t('tokens')} · {fmtTokens(tokensOf(st.usage.week))} {t('usageWeek')}</span>}
 					</div>
 
 					{!running && !s.failure && s.stoppedReason && (
@@ -976,6 +980,18 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 								)}
 								<button onClick={() => action('save')} disabled={waiting || !canSend} title={canSend ? (s.repoUrl ? undefined : t('savedLocal')) : t('nothingToSend')} className={busy === 'save' ? 'busy' : ''}>{busy === 'save' ? <Spinner /> : <Icon name={s.repoUrl ? 'send' : 'check'} />} {busy === 'save' ? t('sending') : s.repoUrl ? t('sendToDev') : t('saveLocal')}</button>
 							</div>
+							{(st.preview.tunnelUrl || s.lanPreview) && st.visits && (
+								<div className="muted small visits">
+									<Icon name="globe" size={13} />{' '}
+									{st.visits.last ? (
+										<>
+											{t('lastViewed')}: <Rel iso={st.visits.last.at} lang={lang} /> {(t('viewedVia') as unknown as Record<string, string>)[st.visits.last.via]}, {st.visits.last.mobile ? t('viewedMobile') : t('viewedDesktop')} · {t('viewsToday', { n: st.visits.today })}
+										</>
+									) : (
+										t('neverViewed')
+									)}
+								</div>
+							)}
 							{st.preview.tunnelUrl && (
 								<Access title={t('shared')} icon="globe" url={st.preview.tunnelUrl} user={st.preview.user} password={st.preview.password} onQr={(text) => setModal({ kind: 'qr', text, title: t('shared') })} onRotate={() => confirm(t('newPasswordConfirm')) && action('password-rotate')} />
 							)}

@@ -25,6 +25,13 @@
 # Basic-auth preview: the Cloudflare tunnel (from inside the container) and,
 # when enabled, phones on the local network through the published port.
 :8081 {
+	log {
+		output file /state/access.log {
+			roll_size 2MiB
+			roll_keep 2
+		}
+		format json
+	}
 	@inside remote_ip 127.0.0.1 ::1
 	handle @inside {
 		basic_auth {

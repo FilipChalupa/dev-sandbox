@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Sums Claude token usage for this sandbox from the session transcripts
+# (assistant messages carry usage + timestamp) every five minutes into
+# usage.json: today and the last seven days.
+source sandbox-lib
+transcripts="$CLAUDE_CONFIG_DIR/projects/$(printf '%s' "$SANDBOX_WORKSPACE" | tr '/' '-')"
+while true; do
+	today="$(date -u +%Y-%m-%d)"
+	week="$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT00:00:00Z)"
+	if ls "$transcripts"/*.jsonl >/dev/null 2>&1; then
+		cat "$transcripts"/*.jsonl 2>/dev/null | jq -c --arg today "$today" --arg week "$week" -s '
+			def add(a; b): {
+				messages: (a.messages + 1),
+				input: (a.input + (b.input_tokens // 0)),
+				output: (a.output + (b.output_tokens // 0)),
+				cacheRead: (a.cacheRead + (b.cache_read_input_tokens // 0)),
+				cacheWrite: (a.cacheWrite + (b.cache_creation_input_tokens // 0))
+			};
+			def zero: {messages: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0};
+			[ .[] | select(.type == "assistant" and .message.usage != null and .timestamp != null) ] as $m
+			| {
+				today: (reduce ($m[] | select(.timestamp | startswith($today))) as $e (zero; add(.; $e.message.usage))),
+				week: (reduce ($m[] | select(.timestamp >= $week)) as $e (zero; add(.; $e.message.usage))),
+				updatedAt: (now | todate)
+			}' > "$(state_file usage.json.tmp)" 2>/dev/null && mv "$(state_file usage.json.tmp)" "$(state_file usage.json)"
+	fi
+	sleep 300
+done

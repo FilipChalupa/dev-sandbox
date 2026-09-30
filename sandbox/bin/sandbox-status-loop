@@ -4,7 +4,7 @@ source sandbox-lib
 while true; do
 	sandbox-status-write
 	# Keep every log small (the Claude server redraws its terminal constantly).
-	for name in claude.log dev.log caddy.log cloudflared.log autosave.log port-watch.log thumb.log fnm.log; do
+	for name in claude.log dev.log caddy.log cloudflared.log autosave.log port-watch.log thumb.log fnm.log usage.log remote.log; do
 		log="$(state_file "$name")"
 		if [ -f "$log" ] && [ "$(stat -c %s "$log")" -gt 1000000 ]; then
 			tail -c 200000 "$log" > "$log.tmp" && cat "$log.tmp" > "$log" && rm -f "$log.tmp"

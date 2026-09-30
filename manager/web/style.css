@@ -229,3 +229,4 @@ legend { padding: 0 6px; font-size: 12px; text-transform: uppercase; letter-spac
 .banner span { flex: 1; }
 .who { font-weight: normal; margin-left: 10px; display: inline-flex; align-items: center; gap: 4px; }
 @media (max-width: 560px) { .who { display: none; } .banner { flex-wrap: wrap; } }
+.visits { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }

@@ -157,6 +157,11 @@ UI:
   developer", so nobody believes the work left the computer,
 - a readiness checklist on the welcome screen and in diagnostics: Docker,
   sandbox image, Claude login, host helper, notifications, installed app,
+- who looked at the shared preview: Caddy's access log on the auth listener
+  gives "last viewed: 14:03 through the shared link, on a phone, 6 pages
+  today",
+- Claude token usage per sandbox (today and last seven days, from the
+  session transcripts, cache included) on the card,
 - English and Czech, switchable.
 
 ### Sandbox container
