@@ -55,5 +55,30 @@ check "force push rejected" "$r" "rejected"
 if git push -q origin :sandbox/t 2>/dev/null; then r=ok; else r=rejected; fi
 check "branch delete rejected" "$r" "rejected"
 
+# sandbox-save: merges what the server has before pushing, stops on conflict
+export SANDBOX_NAME=t SANDBOX_BRANCH=sandbox/t SANDBOX_WORKSPACE="$(mktemp -d)" SANDBOX_STATE_DIR="$(mktemp -d)"
+remote="$(mktemp -d)"; git init -q --bare "$remote" && git --git-dir="$remote" symbolic-ref HEAD refs/heads/sandbox/t
+dev="$(mktemp -d)"
+# push-status.json is written with jq (present in the image and in CI)
+if command -v jq >/dev/null; then jqr() { jq -r "$1" "$2"; }; else jqr() { echo "skipped"; }; fi
+cd "$SANDBOX_WORKSPACE" && git init -q -b sandbox/t . && git config user.email s@x && git config user.name s && git config core.hooksPath "$here/hooks" && git config pull.rebase false
+echo "$SANDBOX_BRANCH" > "$SANDBOX_STATE_DIR/branch"
+echo a > a.txt && git add -A && git commit -qm a && git remote add origin "$remote" && git push -q -u origin sandbox/t
+git clone -q "$remote" "$dev" && (cd "$dev" && git config user.email d@x && git config user.name d && git checkout -q sandbox/t && echo b > b.txt && git add -A && git commit -qm "developer merged main" && git push -q)
+echo c > c.txt
+rc=0; out="$(sandbox-save --skip-checks "sandbox work" 2>&1)" || rc=$?
+check "save merges the server's commits" "$rc" "0"
+check "save pushed after merging" "$(grep -c 'pushed sandbox/t' <<<"$out")" "1"
+check "merged file present" "$([ -f b.txt ] && echo yes)" "yes"
+[ "$(jqr .ok x)" = skipped ] || check "push status ok" "$(jqr .ok "$SANDBOX_STATE_DIR/push-status.json")" "true"
+(cd "$dev" && git pull -q && echo conflict-dev > c.txt && git add -A && git commit -qm "dev edits c" && git push -q)
+echo conflict-sandbox > c.txt
+rc=0; out="$(sandbox-save --skip-checks "conflicting" 2>&1)" || rc=$?
+check "conflict exits 6" "$rc" "6"
+check "conflict keeps the commit local" "$(git log --oneline -1 | grep -c conflicting)" "1"
+check "conflict leaves no merge in progress" "$([ -f .git/MERGE_HEAD ] && echo yes || echo no)" "no"
+[ "$(jqr .ok x)" = skipped ] || check "push status says conflict" "$(jqr .reason "$SANDBOX_STATE_DIR/push-status.json")" "conflict"
+cd /
+
 echo
 if [ "$fails" = 0 ]; then echo "all sandbox tests passed"; else echo "$fails sandbox test(s) failed"; exit 1; fi

@@ -74,6 +74,16 @@ if [ -n "$repo_url" ]; then
 fi
 if git show-ref --verify --quiet "refs/heads/$SANDBOX_BRANCH"; then
 	git checkout -q "$SANDBOX_BRANCH"
+	# Bring in what the server has on the branch when it is a plain fast-forward
+	# (the developer merged main into it); anything else waits for sandbox-save.
+	if git remote get-url origin >/dev/null 2>&1 && [ -z "$(git --no-optional-locks status --porcelain --untracked-files=no)" ] \
+		&& GIT_TERMINAL_PROMPT=0 git fetch -q origin "$SANDBOX_BRANCH" 2>/dev/null; then
+		if git merge -q --ff-only "origin/$SANDBOX_BRANCH" 2>/dev/null; then
+			log "branch fast-forwarded to origin/$SANDBOX_BRANCH"
+		elif ! git merge-base --is-ancestor "origin/$SANDBOX_BRANCH" HEAD 2>/dev/null; then
+			log "origin/$SANDBOX_BRANCH has diverged; sandbox-save merges it before the next push"
+		fi
+	fi
 elif git remote get-url origin >/dev/null 2>&1 \
 	&& git ls-remote --exit-code --heads origin "$SANDBOX_BRANCH" >/dev/null 2>&1; then
 	git fetch -q origin "$SANDBOX_BRANCH"

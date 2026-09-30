@@ -785,6 +785,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 				} catch (e) {
 					const msg = e instanceof Error ? e.message : String(e)
 					if (/CHECK FAILED/.test(msg)) setModal({ kind: 'sendAnyway', name: s.name, output: msg })
+					else if (/CONFLICT/.test(msg)) toast('error', t('pushConflictText'))
 					else throw e
 				}
 				return
@@ -829,7 +830,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 		: st ? <button className="primary" disabled><Spinner /> {t('connecting')}</button>
 		: null
 
-	const canSend = Boolean(st && (st.git.dirty > 0 || st.git.ahead > 0 || !st.git.remote))
+	const canSend = Boolean(st && (st.git.dirty > 0 || st.git.ahead > 0 || st.git.behind > 0 || st.git.push?.ok === false || !st.git.remote))
 	const menuItems = [
 		...(running ? [{ label: t('stop'), icon: 'stop', onClick: () => run(() => api.stop(s.name)) }] : []),
 		{ label: t('edit'), icon: 'settings', onClick: () => setModal({ kind: 'edit', s }) },
@@ -866,7 +867,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 				{primary}
 				<Menu icon="more" label={undefined} items={menuItems} />
 			</div>
-			{running && st && (stage.step === 3 || st.preview.proxyUp === false || s.outdated || s.settingsPending || st.git.remoteCheck?.ok === false) && (
+			{running && st && (stage.step === 3 || st.preview.proxyUp === false || s.outdated || s.settingsPending || st.git.remoteCheck?.ok === false || st.git.push?.ok === false || st.git.behind > 0) && (
 				<div className="card-pills">
 					{stage.step === 3 && (
 						st.preview.devServerUp ? (
@@ -881,6 +882,9 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 					{st.preview.proxyUp === false && <Pill tone="error">{t('proxyDown')}</Pill>}
 					{s.outdated && <Pill tone="warn">{t('outdated')} · <button className="pill-link" onClick={() => run(() => api.start(s.name))}>{t('restart')}</button></Pill>}
 					{st.git.remoteCheck?.ok === false && <Pill tone="error">{t('remoteBroken')}</Pill>}
+					{st.git.push?.ok === false && st.git.push.reason === 'conflict' && <Pill tone="error">{t('pushConflict')}</Pill>}
+					{st.git.push?.ok === false && st.git.push.reason === 'rejected' && <Pill tone="warn">{t('pushRejected')}</Pill>}
+					{st.git.behind > 0 && st.git.push?.reason !== 'conflict' && <Pill tone="info">{t('behind', { n: st.git.behind })}</Pill>}
 					{s.settingsPending && !s.outdated && <Pill tone="warn">{t('settingsPending')} · <button className="pill-link" onClick={() => run(() => api.start(s.name))}>{t('restart')}</button></Pill>}
 				</div>
 			)}
@@ -976,6 +980,15 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 										</select>
 									)}
 								/>
+							)}
+							{st.git.push?.ok === false && st.git.push.reason === 'conflict' && (
+								<div className="failure">
+									<div className="failure-title"><Icon name="alert" /> {t('conflictTitle')}</div>
+									<div>{t('pushConflictText')}</div>
+								</div>
+							)}
+							{st.git.push?.ok === false && st.git.push.reason === 'rejected' && (
+								<p className="hint">{t('pushRejectedText', { detail: st.git.push.detail || '' })}</p>
 							)}
 							{!st.lastActivity && <Prompts />}
 							<div className="git">

@@ -2,9 +2,14 @@
 # Usage: sandbox-save [--skip-checks] [message]
 # Commits everything and pushes the working branch. Used by the autosave loop
 # and by the "Send to developer" button. Refuses to touch a repository in the
-# middle of a merge or rebase. Before pushing it runs the project's lint and
-# typecheck scripts when it has them; if they fail the commit stays local
-# (exit 5) unless --skip-checks is given.
+# middle of a merge or rebase.
+#
+# Before pushing it brings in what the server has on the branch (the developer
+# merges main back into it after each takeover): fetch + merge, never rebase.
+# A conflict aborts the merge, keeps the commit local and exits 6. Then the
+# project's lint and typecheck scripts run when it has them; if they fail the
+# commit stays local (exit 5) unless --skip-checks is given. Exit 4: push
+# rejected for another reason. The outcome is written to push-status.json.
 set -uo pipefail
 source sandbox-lib
 skip_checks=0
@@ -16,12 +21,26 @@ if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ] || [ -f .git/MERGE_HEAD 
 fi
 git config user.email >/dev/null 2>&1 || sandbox-git-identity >/dev/null 2>&1 || { echo "no git identity yet (Claude not logged in?)"; exit 3; }
 trap 'sandbox-status-write' EXIT
+push_status() { jq -n -c --argjson ok "$1" --arg reason "$2" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg detail "${3:-}" '{ok:$ok, reason:$reason, at:$at, detail:$detail}' > "$(state_file push-status.json)"; }
 msg="${1:-wip: autosave $(date '+%Y-%m-%d %H:%M')}"
 if [ -n "$(git --no-optional-locks status --porcelain)" ]; then
 	git add -A
 	git commit -q -m "$msg" && echo "committed: $msg"
 fi
 if git remote get-url origin >/dev/null 2>&1 && git rev-parse --verify -q HEAD >/dev/null; then
+	# The server may be ahead (the developer merged main into this branch).
+	if GIT_TERMINAL_PROMPT=0 git fetch -q origin "$SANDBOX_BRANCH" 2>/dev/null \
+		&& ! git merge-base --is-ancestor "origin/$SANDBOX_BRANCH" HEAD 2>/dev/null; then
+		echo "the server has new commits on $SANDBOX_BRANCH, merging them in…"
+		if ! git merge --no-edit "origin/$SANDBOX_BRANCH" >/dev/null 2>&1; then
+			git merge --abort 2>/dev/null || true
+			push_status false conflict "merge of origin/$SANDBOX_BRANCH conflicts"
+			echo "CONFLICT: the server's version of $SANDBOX_BRANCH conflicts with the changes here."
+			echo "committed locally, not pushed. Ask the developer to resolve it (nothing here is lost)."
+			exit 6
+		fi
+		echo "merged origin/$SANDBOX_BRANCH"
+	fi
 	if ! git rev-parse --verify -q '@{u}' >/dev/null 2>&1 || [ -n "$(git rev-list '@{u}..HEAD' 2>/dev/null)" ]; then
 		if [ "$skip_checks" = 0 ] && [ -f package.json ] && [ -d node_modules ]; then
 			pm="$(package_manager)"
@@ -29,6 +48,7 @@ if git remote get-url origin >/dev/null 2>&1 && git rev-parse --verify -q HEAD >
 				jq -e --arg c "$check" '.scripts[$c]' package.json >/dev/null 2>&1 || continue
 				echo "running $check…"
 				if ! out="$(timeout 300 "$pm" run "$check" 2>&1)"; then
+					push_status false checks "$check failed"
 					echo "CHECK FAILED ($check):"
 					tail -n 12 <<<"$out"
 					echo "committed locally, not pushed. Ask Claude to fix the $check errors, or send anyway."
@@ -41,14 +61,19 @@ if git remote get-url origin >/dev/null 2>&1 && git rev-parse --verify -q HEAD >
 			# History for the UI: time, commits sent, head, subject.
 			printf '%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$count" "$(git rev-parse --short HEAD)" "$(git log -1 --format=%s)" >> "$(state_file sends.log)"
 			jq -n -c --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{ok:true, at:$at, error:""}' > "$(state_file remote-check.json)"
+			push_status true pushed ""
 			echo "pushed $SANDBOX_BRANCH"
 		else
 			if grep -qiE "authentication|denied|403|401|could not read|not found" <<<"$out"; then
 				jq -n -c --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg e "$(tail -n 1 <<<"$out")" '{ok:false, at:$at, error:$e}' > "$(state_file remote-check.json)"
+				push_status false auth "$(tail -n 1 <<<"$out")"
+			else
+				push_status false rejected "$(tail -n 1 <<<"$out")"
 			fi
 			echo "push failed: $(tail -n 3 <<<"$out")"; exit 4
 		fi
 	else
+		push_status true nothing ""
 		echo "nothing to push"
 	fi
 else

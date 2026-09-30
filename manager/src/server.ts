@@ -280,7 +280,7 @@ app.post('/api/sandboxes/:name/save', async (c) => {
 	try {
 		const args = c.req.query('force') === '1' ? ['--skip-checks'] : []
 		const r = await dk.run(c.req.param('name'), ['sandbox-save', ...args, 'Changes from the sandbox'], 400_000)
-		return json({ ok: r.code === 0, checksFailed: r.code === 5, output: r.output }, r.code === 0 ? 200 : 400)
+		return json({ ok: r.code === 0, checksFailed: r.code === 5, conflict: r.code === 6, output: r.output }, r.code === 0 ? 200 : 400)
 	} catch (e) {
 		return fail(e)
 	}

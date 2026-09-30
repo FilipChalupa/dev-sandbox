@@ -20,15 +20,19 @@ if [ -d .git ]; then
 	changed="$(git --no-optional-locks status --porcelain 2>/dev/null | head -n 40 | cut -c4- | jq -R . | jq -s .)"
 	shortstat="$(git --no-optional-locks diff --shortstat 2>/dev/null | sed 's/^ *//')"
 	remote_check="$(cat "$(state_file remote-check.json)" 2>/dev/null || echo '{"ok":null}')"
+	push_state="$(cat "$(state_file push-status.json)" 2>/dev/null || echo '{"ok":null}')"
+	jq -e . <<<"$push_state" >/dev/null 2>&1 || push_state='{"ok":null}'
+	behind=0
+	if git rev-parse --verify -q "origin/$branch" >/dev/null 2>&1; then behind="$(git rev-list --count "HEAD..origin/$branch" 2>/dev/null || echo 0)"; fi
 	jq -e . <<<"$remote_check" >/dev/null 2>&1 || remote_check='{"ok":null}'
 	sends="$(tail -n 20 "$(state_file sends.log)" 2>/dev/null | jq -R 'split("\t") | {at: .[0], count: (.[1] | tonumber? // 0), sha: .[2], subject: .[3]}' | jq -s 'reverse')"
 else
-	dirty=0; branch=""; ahead=0; last=""; remote=""; today='[]'; changed='[]'; shortstat=""; sends='[]'; remote_check='{"ok":null}'
+	dirty=0; branch=""; ahead=0; last=""; remote=""; today='[]'; changed='[]'; shortstat=""; sends='[]'; remote_check='{"ok":null}'; push_state='{"ok":null}'; behind=0
 fi
 if tunnel_running; then tunnel="$(tunnel_url)"; else tunnel=""; fi
 if grep -qx "$(upstream_port)" <<<"$(sandbox-ports)"; then dev_up=true; else dev_up=false; fi
 if tmux has-session -t claude 2>/dev/null; then tmux_up=true; else tmux_up=false; fi
-if curl -fs -o /dev/null http://localhost:2019/config/ 2>/dev/null; then caddy_up=true; else caddy_up=false; fi
+if curl -fs --max-time 3 -o /dev/null http://localhost:2019/config/ 2>/dev/null; then caddy_up=true; else caddy_up=false; fi
 thumb_at=0; [ -f "$(state_file preview.png)" ] && thumb_at="$(stat -c %Y "$(state_file preview.png)")"
 # Activity: Claude appends to a session transcript whenever it works. The
 # server's own terminal output changes even when idle and the git index is
@@ -67,10 +71,12 @@ jq -n \
 	--arg shortstat "$shortstat" \
 	--argjson sends "${sends:-[]}" \
 	--argjson remoteCheck "$remote_check" \
+	--argjson push "$push_state" \
+	--argjson behind "${behind:-0}" \
 	--argjson lanEnabled "$(lan_enabled && echo true || echo false)" \
 	'{
 		name: $name,
-		git: { branch: $branch, remote: $remote, dirty: $dirty, ahead: $ahead, lastCommit: $last, today: $today, changed: $changed, shortstat: $shortstat, sends: $sends, remoteCheck: $remoteCheck },
+		git: { branch: $branch, remote: $remote, dirty: $dirty, ahead: $ahead, lastCommit: $last, today: $today, changed: $changed, shortstat: $shortstat, sends: $sends, remoteCheck: $remoteCheck, push: $push, behind: $behind },
 		claude: { loggedIn: $loggedIn, email: $email, serverRunning: $running, supervisorRunning: $tmuxUp, sessionUrl: $session },
 		preview: { url: $preview, upstreamPort: ($port | tonumber), devServerUp: $devUp, proxyUp: $caddyUp, lanEnabled: $lanEnabled, imageAt: (if $thumbAt > 0 then ($thumbAt | todate) else "" end), tunnelUrl: $tunnel, user: $user, password: $pw },
 		lastActivity: (if $lastActivity > 0 then ($lastActivity | todate) else "" end),

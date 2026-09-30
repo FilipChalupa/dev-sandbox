@@ -18,7 +18,7 @@ sandbox. The developer on the team reviews and merges what comes out.
 | Claude account | The colleague's own paid account (Pro, Max, or a seat on a Team or Enterprise plan). On Team and Enterprise plans an owner must enable Remote Control in the Claude Code admin settings. Login is shared between sandboxes through a shared config directory. |
 | UI for the colleague | claude.ai/code or the Claude mobile app for talking to Claude. A small local web UI (the manager) for creating, starting and stopping sandboxes. No terminal. |
 | Git hosting | Any HTTPS remote with a token (Bitbucket repository access tokens, GitHub fine-grained tokens). Fetch and push only, no pull request API. |
-| Branching | One long-lived working branch per sandbox. No automatic pulls of a base branch: a merge conflict has nobody to resolve it. The developer merges the branch when asked. |
+| Branching | One long-lived working branch per sandbox. The developer merges the branch into main when asked and merges main back into the branch afterwards; the sandbox brings that merge in itself (fast-forward at start, a merge before every push, never a rebase) and stops only on a real conflict, which is the developer's to resolve. No automatic pulls of the base branch otherwise. |
 | Commits | Claude commits and pushes after each finished change (instructed through CLAUDE.md). An optional autosave timer commits and pushes `wip` commits when the tree is dirty, as a safety net. |
 | Git identity | Taken from the logged-in Claude account (`oauthAccount` in `.claude.json`), overridable. |
 | `.env` | The colleague fills it in with Claude's help. Never committed. |
@@ -184,7 +184,9 @@ Processes inside (the entrypoint restarts any of them that dies):
   read pages,
 - `sandbox-port-watch`: follows whatever port the dev server listens on and
   points Caddy at it, so nothing has to be configured per project,
-- `sandbox-save`: commit everything and push (used by autosave and the UI),
+- `sandbox-save`: commit everything, merge what the server has on the
+  branch, run the project's checks, push (used by autosave and the UI);
+  exit 6 on a conflict, with the outcome in `push-status.json` for the card,
 - `sandbox-status` writing `status.json` (session URL, tunnel URL, upstream
   port, git state, logged-in account) for the manager.
 
@@ -256,6 +258,11 @@ stops and deletes.
 - Caddy's `handle_errors` must be limited to 502/503, otherwise it swallows
   the 401 challenge of basic auth; and it cannot live inside a `handle`
   block, only at site level.
+- A takeover that merges main back into the sandbox branch on the server
+  leaves the sandbox behind; without a merge before pushing every later push
+  was rejected as non fast-forward and the guard's wording ("force push")
+  sent Claude down the wrong path. Now `sandbox-save` merges first and the
+  guard explains what to do.
 - Anything that polls `git status` next to Claude must use
   `--no-optional-locks`, otherwise Claude's own git commands hit
   `index.lock: File exists`.

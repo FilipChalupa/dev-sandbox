@@ -20,7 +20,7 @@ export PORT="$port" USER="$SANDBOX_PREVIEW_USER" HASH="$hash" HEADER_UP="$header
 envsubst '$PORT $USER $HASH $HEADER_UP $LAN_BLOCK' \
 	< /opt/sandbox/templates/Caddyfile > "$(state_file Caddyfile)"
 
-if curl -fs http://localhost:2019/config/ >/dev/null 2>&1; then
+if curl -fs --max-time 3 http://localhost:2019/config/ >/dev/null 2>&1; then
 	caddy reload --config "$(state_file Caddyfile)" 2>/dev/null
 fi
 echo "preview proxies to 127.0.0.1:$port"

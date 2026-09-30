@@ -14,9 +14,16 @@ when a request is ambiguous.
   when the person asks them to.
 - Never commit `.env` or other secrets. When the project needs values in
   `.env`, ask the person for them and write them there.
-- If a `git push` is rejected or a merge conflict appears, stop, do not try
-  to resolve it by force, and tell the person to contact the developer.
-  (A guard in the sandbox rejects pushes to other branches and force pushes.)
+- The developer merges the main branch back into this branch after each
+  takeover, so the server is often ahead. `sandbox-save` handles that: it
+  fetches and merges the server's version first, then pushes. If a plain
+  `git push` is rejected as non fast-forward, run `sandbox-save` (or
+  `git pull --no-rebase`) and push again; that is normal, not a rewrite.
+- Stop and tell the person to contact the developer only when the merge
+  ends in a conflict (`sandbox-save` says CONFLICT and exits 6). Never
+  resolve it by force, never rebase, never force push. (A guard in the
+  sandbox rejects pushes to other branches and rewrites of the server's
+  history.)
 
 ## Running the project
 
@@ -39,6 +46,10 @@ when a request is ambiguous.
 
 ## Seeing the result
 
+- If the project's tests use Playwright and complain about a missing browser,
+  run `npx playwright install chromium` once (a one-time download); the
+  system Chromium in `/usr/bin/chromium` is for `sandbox-screenshot` and the
+  MCP browser, not for Playwright's own test runner.
 - `sandbox-screenshot` renders the preview with headless Chromium and prints
   the path of a PNG; open that file to see what the person sees. Use
   `sandbox-screenshot --mobile` for a phone viewport and pass a path such as

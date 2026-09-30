@@ -10,7 +10,7 @@ if claude_logged_in; then say login true "$(claude auth status 2>/dev/null | jq 
 
 if pgrep -f 'claude remote-control' >/dev/null; then say claudeServer true "$(session_url)"; else say claudeServer false "server not running"; fi
 
-if curl -fs -o /dev/null http://localhost:2019/config/; then say proxy true "Caddy up, upstream $(upstream_port)"; else say proxy false "Caddy not answering"; fi
+if curl -fs --max-time 3 -o /dev/null http://localhost:2019/config/; then say proxy true "Caddy up, upstream $(upstream_port)"; else say proxy false "Caddy not answering"; fi
 
 ports="$(sandbox-ports | tr '\n' ' ')"
 if grep -qw "$(upstream_port)" <<<"$ports"; then say devServer true "listening on $(upstream_port)"; else say devServer false "nothing on $(upstream_port); listening: ${ports:-none}"; fi

@@ -14,7 +14,8 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 		echo "sandbox: refusing to delete the branch '$branch'." >&2
 		status=1
 	elif [ "$remote_sha" != "$zero" ] && ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
-		echo "sandbox: refusing a non fast-forward (force) push to '$branch'. Pull first; if there is a conflict, ask the developer." >&2
+		echo "sandbox: the server has commits on '$branch' that are not here yet (the developer probably merged main into it)." >&2
+		echo "sandbox: run 'sandbox-save' (it merges them in first) or 'git pull --no-rebase', then push again. Rewriting the server's history is not allowed." >&2
 		status=1
 	fi
 done
