@@ -23,11 +23,11 @@ shot() { # name url width height dark(0/1)
 	$DOCKER cp "shots:/tmp/$1.png" "$OUT/$1.png" >/dev/null
 	echo "$OUT/$1.png"
 }
-base="http://sandbox-manager:8787/"
+base="http://sandbox-manager:8787/?demo=1"
 for theme in light dark; do
 	d=0; [ $theme = dark ] && d=1
 	shot "list-desktop-$theme" "$base" 1280 900 $d
 	shot "list-phone-$theme" "$base" 390 1200 $d
-	shot "new-desktop-$theme" "$base#new?name=my-site&repo=https://bitbucket.org/ws/repo.git" 1280 900 $d
+	shot "new-desktop-$theme" "$base#new?repo=https://bitbucket.org/example-studio/portfolio.git" 1280 1180 $d
 done
 $DOCKER rm -f shots >/dev/null

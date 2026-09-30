@@ -12,9 +12,20 @@ the running dev server on `localhost`, share it with someone through a
 Cloudflare quick tunnel protected by basic auth, and Claude commits and pushes
 their work to a branch that a developer merges later.
 
-Status: **working prototype.** The sandbox image and the manager UI run;
-what is left is real-world use. See [docs/design.md](docs/design.md) for the
-architecture and decisions.
+Status: **in daily use** on a Mac. See [docs/design.md](docs/design.md) for
+the architecture and decisions.
+
+## Screenshots
+
+All data in the pictures is made up (`?demo=1` renders the UI on fixtures).
+
+| The manager | New sandbox |
+| --- | --- |
+| ![The manager with one running and one stopped sandbox](docs/screenshots/manager-dark.png) | ![The new sandbox form](docs/screenshots/new-sandbox.png) |
+
+| Light theme | On a phone |
+| --- | --- |
+| ![Light theme](docs/screenshots/manager-light.png) | ![Phone width](docs/screenshots/manager-phone.png) |
 
 ## Install
 
@@ -142,6 +153,8 @@ docker build -t dev-sandbox sandbox/        # the sandbox image
 ```
 
 Point the manager at a locally built image with `SANDBOX_IMAGE=dev-sandbox`.
+Open `http://localhost:8787/?demo=1` to see the UI on made-up data without
+Docker; `scripts/screenshots.sh` photographs it.
 
 ## License
 

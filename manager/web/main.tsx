@@ -10,6 +10,9 @@ import { LangContext, detectLang, languages, saveLang, useT, type Lang } from '.
 import { Terminal } from './Terminal'
 import { Icon, Menu, Modal, Pill, Rel, Skeleton, Spinner, ToastProvider, humanizeError, isRecent, useToast } from './ui'
 import './style.css'
+import { enableDemo } from './demo'
+
+if (new URLSearchParams(location.search).has('demo')) enableDemo()
 
 // ---------------------------------------------------------------- data
 
@@ -954,7 +957,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 						<>
 							{st.preview.imageAt && (
 								<a className="thumb" href={st.preview.url} target="_blank" rel="noreferrer" title={t('previewThumb')}>
-									<img src={`/api/sandboxes/${s.name}/preview.png?t=${encodeURIComponent(st.preview.imageAt)}`} alt={t('previewThumb')} />
+									<img src={(window as any).__demoThumb ?? `/api/sandboxes/${s.name}/preview.png?t=${encodeURIComponent(st.preview.imageAt)}`} alt={t('previewThumb')} />
 								</a>
 							)}
 							<div className="links">
@@ -985,7 +988,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 									<Icon name="globe" size={13} />{' '}
 									{st.visits.last ? (
 										<>
-											{t('lastViewed')}: <Rel iso={st.visits.last.at} lang={lang} /> {(t('viewedVia') as unknown as Record<string, string>)[st.visits.last.via]}, {st.visits.last.mobile ? t('viewedMobile') : t('viewedDesktop')} · {t('viewsToday', { n: st.visits.today })}
+											{t('lastViewed')}: <Rel iso={st.visits.last.at} lang={lang} /> {st.visits.last.via === 'tunnel' ? t('viewedViaTunnel') : t('viewedViaLan')}, {st.visits.last.mobile ? t('viewedMobile') : t('viewedDesktop')} · {t('viewsToday', { n: st.visits.today })}
 										</>
 									) : (
 										t('neverViewed')
