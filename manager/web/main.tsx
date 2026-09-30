@@ -782,6 +782,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 					const r = await api.save(s.name, false)
 					toast('ok', s.repoUrl ? `${t('sent')} (${r.output.split('\n').pop()})` : t('savedLocal'))
 					if (/pushed/.test(r.output)) setModal({ kind: 'devmsg', name: s.name })
+					if (/replaced/.test(r.output)) toast('info', t('pushOverwrote'))
 				} catch (e) {
 					const msg = e instanceof Error ? e.message : String(e)
 					if (/CHECK FAILED/.test(msg)) setModal({ kind: 'sendAnyway', name: s.name, output: msg })
@@ -867,7 +868,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 				{primary}
 				<Menu icon="more" label={undefined} items={menuItems} />
 			</div>
-			{running && st && (stage.step === 3 || st.preview.proxyUp === false || s.outdated || s.settingsPending || st.git.remoteCheck?.ok === false || st.git.push?.ok === false || st.git.behind > 0) && (
+			{running && st && (stage.step === 3 || st.preview.proxyUp === false || s.outdated || s.settingsPending || st.git.remoteCheck?.ok === false || st.git.push?.ok === false || st.git.push?.reason === 'overwrote' || st.git.behind > 0) && (
 				<div className="card-pills">
 					{stage.step === 3 && (
 						st.preview.devServerUp ? (
@@ -884,6 +885,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 					{st.git.remoteCheck?.ok === false && <Pill tone="error">{t('remoteBroken')}</Pill>}
 					{st.git.push?.ok === false && st.git.push.reason === 'conflict' && <Pill tone="error">{t('pushConflict')}</Pill>}
 					{st.git.push?.ok === false && st.git.push.reason === 'rejected' && <Pill tone="warn">{t('pushRejected')}</Pill>}
+					{st.git.push?.reason === 'overwrote' && <Pill tone="warn">{t('pushOverwrote')}</Pill>}
 					{st.git.behind > 0 && st.git.push?.reason !== 'conflict' && <Pill tone="info">{t('behind', { n: st.git.behind })}</Pill>}
 					{s.settingsPending && !s.outdated && <Pill tone="warn">{t('settingsPending')} · <button className="pill-link" onClick={() => run(() => api.start(s.name))}>{t('restart')}</button></Pill>}
 				</div>
@@ -986,6 +988,9 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 									<div className="failure-title"><Icon name="alert" /> {t('conflictTitle')}</div>
 									<div>{t('pushConflictText')}</div>
 								</div>
+							)}
+							{st.git.push?.reason === 'overwrote' && (
+								<p className="hint">{t('pushOverwroteText', { detail: st.git.push.detail || '' })}</p>
 							)}
 							{st.git.push?.ok === false && st.git.push.reason === 'rejected' && (
 								<p className="hint">{t('pushRejectedText', { detail: st.git.push.detail || '' })}</p>
@@ -1155,7 +1160,7 @@ function DevMessage({ s, name, onClose }: { s?: Sandbox; name: string; onClose: 
 	const branch = g?.branch || s?.branch || ''
 	const links = repoLinks(s?.repoUrl ?? '', branch, g?.lastCommit?.split(' ')[0] ?? '')
 	const [text, setText] = useState(() =>
-		t('devMessageText', { name, branch, link: links.branch ? ` (${links.branch})` : '', commit: g?.lastCommit || '-' }),
+		t('devMessageText', { name, branch, link: links.branch ? ` (${links.branch})` : '', commit: g?.lastCommit || '-' }) + (g?.push?.reason === 'overwrote' ? t('devMessageOverwrote') : ''),
 	)
 	return (
 		<Modal title={<><Icon name="send" /> {t('devMessage')}</>} onClose={onClose}>

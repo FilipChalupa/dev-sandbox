@@ -13,6 +13,8 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 	elif [ "$local_sha" = "$zero" ]; then
 		echo "sandbox: refusing to delete the branch '$branch'." >&2
 		status=1
+	elif [ "$remote_sha" != "$zero" ] && [ "${SANDBOX_ALLOW_OVERWRITE:-}" = 1 ]; then
+		: # sandbox-save replacing the server's version after a merge conflict (force-with-lease)
 	elif [ "$remote_sha" != "$zero" ] && ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
 		echo "sandbox: the server has commits on '$branch' that are not here yet (the developer probably merged main into it)." >&2
 		echo "sandbox: run 'sandbox-save' (it merges them in first) or 'git pull --no-rebase', then push again. Rewriting the server's history is not allowed." >&2

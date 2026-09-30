@@ -74,10 +74,16 @@ check "merged file present" "$([ -f b.txt ] && echo yes)" "yes"
 (cd "$dev" && git pull -q && echo conflict-dev > c.txt && git add -A && git commit -qm "dev edits c" && git push -q)
 echo conflict-sandbox > c.txt
 rc=0; out="$(sandbox-save --skip-checks "conflicting" 2>&1)" || rc=$?
-check "conflict exits 6" "$rc" "6"
-check "conflict keeps the commit local" "$(git log --oneline -1 | grep -c conflicting)" "1"
-check "conflict leaves no merge in progress" "$([ -f .git/MERGE_HEAD ] && echo yes || echo no)" "no"
-[ "$(jqr .ok x)" = skipped ] || check "push status says conflict" "$(jqr .reason "$SANDBOX_STATE_DIR/push-status.json")" "conflict"
+check "conflict still exits 0 (server replaced)" "$rc" "0"
+check "sandbox commit kept" "$(git log --oneline -1 | grep -c conflicting)" "1"
+check "no merge in progress" "$([ -f .git/MERGE_HEAD ] && echo yes || echo no)" "no"
+check "server now equals the sandbox" "$(git --git-dir="$remote" rev-parse sandbox/t)" "$(git rev-parse HEAD)"
+check "overwrite reported" "$(grep -c 'replaced' <<<"$out")" "1"
+[ "$(jqr .ok x)" = skipped ] || check "push status says overwrote" "$(jqr .reason "$SANDBOX_STATE_DIR/push-status.json")" "overwrote"
+# a plain force push by hand is still refused
+git commit -q --allow-empty -m x && git push -q origin sandbox/t && git reset -q --hard HEAD~1 && git commit -q --allow-empty -m y
+if git push -q --force origin sandbox/t 2>/dev/null; then r=ok; else r=rejected; fi
+check "manual force push still rejected" "$r" "rejected"
 cd /
 
 echo

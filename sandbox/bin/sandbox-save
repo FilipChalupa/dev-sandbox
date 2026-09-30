@@ -6,10 +6,14 @@
 #
 # Before pushing it brings in what the server has on the branch (the developer
 # merges main back into it after each takeover): fetch + merge, never rebase.
-# A conflict aborts the merge, keeps the commit local and exits 6. Then the
-# project's lint and typecheck scripts run when it has them; if they fail the
-# commit stays local (exit 5) unless --skip-checks is given. Exit 4: push
-# rejected for another reason. The outcome is written to push-status.json.
+# When that merge conflicts, the sandbox's version wins: the merge is aborted
+# and the branch on the server is replaced with the sandbox's state (only what
+# was just fetched, --force-with-lease); the developer redoes the merge of
+# main later, with the conflict resolved on their side. The overwritten
+# commit is recorded so nothing is lost. Then the project's lint and typecheck
+# scripts run when it has them; if they fail the commit stays local (exit 5)
+# unless --skip-checks is given. Exit 4: push rejected for another reason.
+# The outcome is written to push-status.json.
 set -uo pipefail
 source sandbox-lib
 skip_checks=0
@@ -32,14 +36,23 @@ if git remote get-url origin >/dev/null 2>&1 && git rev-parse --verify -q HEAD >
 	if GIT_TERMINAL_PROMPT=0 git fetch -q origin "$SANDBOX_BRANCH" 2>/dev/null \
 		&& ! git merge-base --is-ancestor "origin/$SANDBOX_BRANCH" HEAD 2>/dev/null; then
 		echo "the server has new commits on $SANDBOX_BRANCH, merging them in…"
-		if ! git merge --no-edit "origin/$SANDBOX_BRANCH" >/dev/null 2>&1; then
+		if git merge --no-edit "origin/$SANDBOX_BRANCH" >/dev/null 2>&1; then
+			echo "merged origin/$SANDBOX_BRANCH"
+		else
 			git merge --abort 2>/dev/null || true
-			push_status false conflict "merge of origin/$SANDBOX_BRANCH conflicts"
-			echo "CONFLICT: the server's version of $SANDBOX_BRANCH conflicts with the changes here."
-			echo "committed locally, not pushed. Ask the developer to resolve it (nothing here is lost)."
+			overwritten="$(git rev-parse --short "origin/$SANDBOX_BRANCH")"
+			echo "CONFLICT: the server's version of $SANDBOX_BRANCH ($overwritten) conflicts with the changes here."
+			echo "replacing the server's version with this sandbox's; the developer merges main again later."
+			if out="$(SANDBOX_ALLOW_OVERWRITE=1 git push --force-with-lease="$SANDBOX_BRANCH:origin/$SANDBOX_BRANCH" -u origin "$SANDBOX_BRANCH" 2>&1)"; then
+				printf '%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "overwrote" "$overwritten" "server version replaced after a merge conflict" >> "$(state_file sends.log)"
+				push_status true overwrote "server had $overwritten; replaced with $(git rev-parse --short HEAD). The developer needs to merge main into the branch again."
+				echo "pushed $SANDBOX_BRANCH (server version $overwritten replaced)"
+				exit 0
+			fi
+			push_status false conflict "could not replace the server's version: $(tail -n 1 <<<"$out")"
+			echo "could not push: $(tail -n 2 <<<"$out")"
 			exit 6
 		fi
-		echo "merged origin/$SANDBOX_BRANCH"
 	fi
 	if ! git rev-parse --verify -q '@{u}' >/dev/null 2>&1 || [ -n "$(git rev-list '@{u}..HEAD' 2>/dev/null)" ]; then
 		if [ "$skip_checks" = 0 ] && [ -f package.json ] && [ -d node_modules ]; then

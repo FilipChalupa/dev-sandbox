@@ -19,11 +19,12 @@ when a request is ambiguous.
   fetches and merges the server's version first, then pushes. If a plain
   `git push` is rejected as non fast-forward, run `sandbox-save` (or
   `git pull --no-rebase`) and push again; that is normal, not a rewrite.
-- Stop and tell the person to contact the developer only when the merge
-  ends in a conflict (`sandbox-save` says CONFLICT and exits 6). Never
-  resolve it by force, never rebase, never force push. (A guard in the
-  sandbox rejects pushes to other branches and rewrites of the server's
-  history.)
+- When that merge conflicts, `sandbox-save` keeps the sandbox's version
+  and replaces the server's copy of the branch with it (it says so in its
+  output). Tell the person that the developer will need to merge the main
+  branch into the branch again. Do not resolve conflicts yourself, never
+  rebase, never force push by hand. (A guard in the sandbox rejects pushes
+  to other branches and rewrites of the server's history.)
 
 ## Running the project
 

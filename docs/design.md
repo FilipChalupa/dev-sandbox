@@ -18,7 +18,7 @@ sandbox. The developer on the team reviews and merges what comes out.
 | Claude account | The colleague's own paid account (Pro, Max, or a seat on a Team or Enterprise plan). On Team and Enterprise plans an owner must enable Remote Control in the Claude Code admin settings. Login is shared between sandboxes through a shared config directory. |
 | UI for the colleague | claude.ai/code or the Claude mobile app for talking to Claude. A small local web UI (the manager) for creating, starting and stopping sandboxes. No terminal. |
 | Git hosting | Any HTTPS remote with a token (Bitbucket repository access tokens, GitHub fine-grained tokens). Fetch and push only, no pull request API. |
-| Branching | One long-lived working branch per sandbox. The developer merges the branch into main when asked and merges main back into the branch afterwards; the sandbox brings that merge in itself (fast-forward at start, a merge before every push, never a rebase) and stops only on a real conflict, which is the developer's to resolve. No automatic pulls of the base branch otherwise. |
+| Branching | One long-lived working branch per sandbox. The developer merges the branch into main when asked and merges main back into the branch afterwards; the sandbox brings that merge in itself (fast-forward at start, a merge before every push, never a rebase). On a real conflict the sandbox's version wins: it replaces the server's copy of the branch (force-with-lease, the overwritten commit is recorded) and the developer redoes the merge with the conflict resolved on their side, after which the sandbox fast-forwards again. No automatic pulls of the base branch otherwise. |
 | Commits | Claude commits and pushes after each finished change (instructed through CLAUDE.md). An optional autosave timer commits and pushes `wip` commits when the tree is dirty, as a safety net. |
 | Git identity | Taken from the logged-in Claude account (`oauthAccount` in `.claude.json`), overridable. |
 | `.env` | The colleague fills it in with Claude's help. Never committed. |
@@ -186,7 +186,9 @@ Processes inside (the entrypoint restarts any of them that dies):
   points Caddy at it, so nothing has to be configured per project,
 - `sandbox-save`: commit everything, merge what the server has on the
   branch, run the project's checks, push (used by autosave and the UI);
-  exit 6 on a conflict, with the outcome in `push-status.json` for the card,
+  on a conflict it replaces the server's branch with the sandbox's state
+  (exit 6 only when even that fails), with the outcome in `push-status.json`
+  for the card,
 - `sandbox-status` writing `status.json` (session URL, tunnel URL, upstream
   port, git state, logged-in account) for the manager.
 
