@@ -31,7 +31,9 @@ when a request is ambiguous.
 - Find out how to run it from the repository (README, `package.json`, etc.).
 - `sandbox-dev-start` starts the dev server for common setups (package.json
   scripts, plain HTML) in a tmux session named `dev`; `sandbox-dev-stop`
-  stops it. When it cannot, start the server yourself so that it keeps
+  stops it. Dependencies are kept up to date by `sandbox-deps` (at start,
+  before the dev server, after the developer's commits are merged in); after
+  you change package.json yourself, run `sandbox-deps --restart`. When it cannot, start the server yourself so that it keeps
   running after your command returns (a `tmux` session or `nohup … &`),
   listening on `127.0.0.1` or `0.0.0.0`.
 - The person sees the project at **${SANDBOX_PREVIEW_URL}**. That address

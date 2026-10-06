@@ -59,6 +59,11 @@ can start sessions in it. Status for the manager is in `/state/status.json`.
 - `sandbox-unshare`: stop the tunnel.
 - `sandbox-dev-start` / `sandbox-dev-stop`: start or stop the project's dev
   server (package.json scripts, static HTML, or Claude as a fallback).
+- `sandbox-deps [--restart]`: install the dependencies when package.json, the
+  lockfile or the Node version changed since the last install (npm, pnpm,
+  yarn, bun). Runs at start, before `sandbox-dev-start` and after
+  `sandbox-save` merges the developer's commits; `--restart` restarts a
+  running dev server after an install.
 - `sandbox-save [--skip-checks] [message]`: commit everything and push the
   working branch; runs the project's `lint` and `typecheck` scripts first
   and keeps the commit local when they fail.

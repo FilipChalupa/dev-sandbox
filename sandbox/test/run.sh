@@ -86,5 +86,34 @@ if git push -q --force origin sandbox/t 2>/dev/null; then r=ok; else r=rejected;
 check "manual force push still rejected" "$r" "rejected"
 cd /
 
+# sandbox-deps: installs only when the manifests change, per package manager
+export SANDBOX_STATE_DIR="$(mktemp -d)" SANDBOX_WORKSPACE="$(mktemp -d)"
+shims="$(mktemp -d)"; calls="$shims/calls"
+for m in pnpm npm; do
+	# A fake manager: records how it was called and creates node_modules;
+	# FAIL_EXACT makes the exact install (ci / --frozen-lockfile) fail.
+	printf '#!/usr/bin/env bash\necho "%s $*" >> "%s"\ncase "$*" in *ci*|*frozen*) [ -n "${FAIL_EXACT:-}" ] && exit 1 ;; esac\nmkdir -p node_modules\n' "$m" "$calls" > "$shims/$m"
+	chmod +x "$shims/$m"
+done
+deps() { PATH="$shims:$PATH" sandbox-deps "$@" >/dev/null 2>&1; }
+ncalls() { [ -f "$calls" ] && wc -l < "$calls" | tr -d ' ' || echo 0; }
+cd "$SANDBOX_WORKSPACE"
+deps; check "no package.json: nothing to do" "$(ncalls)" "0"
+echo '{"name":"p"}' > package.json && echo 'lock: 1' > pnpm-lock.yaml
+deps; check "pnpm: first install is exact" "$(tail -n 1 "$calls")" "pnpm install --frozen-lockfile --prefer-offline"
+deps; check "unchanged: no second install" "$(ncalls)" "1"
+echo 'lock: 2' > pnpm-lock.yaml
+deps; check "changed lockfile: install again" "$(ncalls)" "2"
+rm -rf node_modules
+deps; check "missing node_modules: install again" "$(ncalls)" "3"
+rm pnpm-lock.yaml node_modules -rf && echo '{}' > package-lock.json && : > "$calls"
+deps; check "npm with lockfile: npm ci" "$(tail -n 1 "$calls")" "npm ci --no-audit --no-fund"
+echo '{"name":"p","dependencies":{"x":"1"}}' > package.json
+FAIL_EXACT=1 PATH="$shims:$PATH" sandbox-deps >/dev/null 2>&1; rc=$?
+check "lockfile out of sync: falls back to a plain install" "$(tail -n 1 "$calls")" "npm install --no-audit --no-fund"
+check "fallback install succeeds" "$rc" "0"
+deps; check "after the fallback: up to date (ci + install, nothing more)" "$(ncalls)" "3"
+cd /
+
 echo
 if [ "$fails" = 0 ]; then echo "all sandbox tests passed"; else echo "$fails sandbox test(s) failed"; exit 1; fi

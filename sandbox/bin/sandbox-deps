@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# Usage: sandbox-deps [--restart]
+# Installs the project's dependencies when they are missing or out of date.
+#
+# "Out of date" means package.json, the lockfile or the Node version changed
+# since the last install here. That happens without anyone in the sandbox
+# touching them: the developer merges main into the branch (a new package,
+# an upgrade) and the sandbox picks that up at start or in sandbox-save. Before
+# this script only a missing node_modules triggered an install, so the dev
+# server kept running on stale packages until it crashed on an import.
+#
+# Works for npm, pnpm, yarn and bun; the manager comes from the lockfile
+# (package_manager in sandbox-lib). An exact install from the lockfile is
+# tried first (npm ci, pnpm/bun --frozen-lockfile, yarn --immutable); when the
+# lockfile does not match package.json (Claude added a package by editing
+# package.json), a plain install that updates the lockfile follows.
+#
+# The fingerprint of what was installed lives in node_modules itself, so
+# deleting node_modules (or a fresh clone) always means an install.
+#
+# --restart: after an install, restart a running dev server (tmux "dev") so
+# the preview runs on the new packages.
+# Exit 0: up to date or installed; 1: install failed (output in deps.log).
+set -uo pipefail
+source sandbox-lib
+restart=0
+[ "${1:-}" = "--restart" ] && restart=1
+cd "$SANDBOX_WORKSPACE" || exit 0
+[ -f package.json ] || exit 0
+
+# One install at a time: autosave and a manual start can overlap.
+exec 9> "$(state_file deps.lock)"
+flock -w 600 9 || { log "another install is still running"; exit 1; }
+
+# The Node version the project asks for (.nvmrc etc.), as the dev server uses.
+command -v fnm >/dev/null 2>&1 && eval "$(fnm env --shell bash 2>/dev/null)" \
+	&& fnm use --silent-if-unchanged --install-if-missing >/dev/null 2>&1 || true
+
+pm="$(package_manager)"
+stamp_file=node_modules/.sandbox-deps
+
+# Everything an install depends on: manager, Node version, the manifests.
+fingerprint() {
+	{
+		echo "$pm"
+		node --version 2>/dev/null
+		cat package.json
+		for f in package-lock.json npm-shrinkwrap.json pnpm-lock.yaml pnpm-workspace.yaml yarn.lock bun.lock bun.lockb .npmrc; do
+			[ -f "$f" ] && { echo "== $f"; cat "$f"; }
+		done
+	} | sha256sum | cut -d' ' -f1
+}
+
+want="$(fingerprint)"
+if [ -d node_modules ] && [ "$(cat "$stamp_file" 2>/dev/null)" = "$want" ]; then
+	exit 0
+fi
+
+# Exact first, then a plain install when the lockfile does not fit.
+case "$pm" in
+	pnpm) exact="pnpm install --frozen-lockfile --prefer-offline"; loose="pnpm install --prefer-offline" ;;
+	yarn) exact="yarn install --immutable || yarn install --frozen-lockfile"; loose="yarn install" ;;
+	bun) exact="bun install --frozen-lockfile"; loose="bun install" ;;
+	*)
+		if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+			exact="npm ci --no-audit --no-fund"
+		else
+			exact="npm install --no-audit --no-fund"
+		fi
+		loose="npm install --no-audit --no-fund"
+		;;
+esac
+
+logf="$(state_file deps.log)"
+log "dependencies changed, installing with $pm"
+# CI=true: no prompts (pnpm asks before recreating node_modules, corepack before downloading).
+export CI=true COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+{ echo "== $(date '+%Y-%m-%d %H:%M:%S') $exact"; } >> "$logf"
+if ! timeout 900 bash -c "$exact" >> "$logf" 2>&1; then
+	echo "== exact install failed, trying: $loose" >> "$logf"
+	if ! timeout 900 bash -c "$loose" >> "$logf" 2>&1; then
+		log "INSTALL FAILED, see $logf"
+		tail -n 15 "$logf" >&2
+		exit 1
+	fi
+fi
+mkdir -p node_modules
+# Fingerprint after the install: a loose install may have rewritten the lockfile.
+fingerprint > "$stamp_file"
+log "dependencies installed"
+
+# Release the lock first: sandbox-dev-start runs sandbox-deps itself and would
+# otherwise wait on the lock this process (and its inherited fd) still holds.
+exec 9>&-
+if [ "$restart" = 1 ] && tmux has-session -t dev 2>/dev/null; then
+	log "restarting the dev server on the new dependencies"
+	sandbox-dev-stop >/dev/null 2>&1
+	sandbox-dev-start >/dev/null 2>&1 &
+fi
+exit 0

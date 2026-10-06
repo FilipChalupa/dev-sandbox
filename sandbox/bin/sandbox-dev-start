@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Starts the project's dev server without a person typing anything: guesses
-# from package.json (dev / start / serve / preview scripts, installs
-# dependencies first when node_modules is missing), falls back to a static
+# from package.json (dev / start / serve / preview scripts; dependencies are
+# installed or brought up to date first, see sandbox-deps), falls back to a static
 # server for plain HTML, and as a last resort asks Claude to figure it out.
 # The server runs in a tmux session "dev" so it survives this command.
 set -uo pipefail
@@ -30,9 +30,11 @@ if [ -f package.json ]; then
 		[ -f pnpm-lock.yaml ] && pm=pnpm
 		[ -f yarn.lock ] && pm=yarn
 		[ -f bun.lockb ] || [ -f bun.lock ] && pm=bun
-		install=""
-		[ -d node_modules ] || install="$pm install && "
-		cmd="${install}${pm} run ${script}"
+		# Missing or stale dependencies (a merge brought new packages) are
+		# installed here, before the server starts; a failed install still
+		# lets the server try with what is there.
+		sandbox-deps || echo "dependency install failed, starting anyway (see deps.log)"
+		cmd="${pm} run ${script}"
 	fi
 fi
 if [ -z "$cmd" ] && [ -f index.html ]; then
