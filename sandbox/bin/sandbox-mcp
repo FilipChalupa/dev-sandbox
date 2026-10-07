@@ -13,6 +13,8 @@
 //   claude-report.json  the last status Claude reported
 //   requests.json       actions Claude asked the person for, and their outcome
 //   events.log          what happened in the sandbox (merges, starts), tab separated
+//   project-server.json how to run the project, decided by Claude; the
+//                       sandbox repeats it after restarts and merges
 //
 // No dependencies on purpose: the protocol is newline-delimited JSON-RPC and
 // the image should not need an npm install for it.
@@ -20,6 +22,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const crypto = require('node:crypto')
+const { spawn, spawnSync } = require('node:child_process')
 
 const stateDir = process.env.SANDBOX_STATE_DIR || '/state'
 const file = (name) => path.join(stateDir, name)
@@ -79,6 +82,23 @@ const tools = [
 		},
 	},
 	{
+		name: 'project_server',
+		description:
+			'Run the project server (the website the person sees in the preview). The sandbox does not guess how: you decide the command once, e.g. "pnpm dev" or ' +
+			'"python3 -m http.server 3000", and the sandbox starts it in the background, installs missing dependencies first, and starts it again on its own after a restart ' +
+			'and after the developer\'s changes are merged in; the person\'s "start" button runs it too. The server must listen on 127.0.0.1 or 0.0.0.0; the preview follows its port. ' +
+			'start: save the command and (re)start the server. restart: start the saved command again (after you changed dependencies or the config). stop: stop it. ' +
+			'Starting returns right away; sandbox_info shows a few seconds later whether it listens, its output is in /state/dev.log.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				action: { type: 'string', enum: ['start', 'restart', 'stop'] },
+				command: { type: 'string', description: 'For start: the shell command, run in the project directory. Omit to use the saved one.' },
+			},
+			required: ['action'],
+		},
+	},
+	{
 		name: 'sandbox_info',
 		description:
 			'What the manager knows about this sandbox: preview address and whether the project server runs, the git state (uncommitted, unsent, behind the server, last send), ' +
@@ -111,6 +131,25 @@ function call(name, args) {
 		event(`asked the person: ${action}: ${message}`)
 		return `Request ${id} is on the card with a button. sandbox_info shows when the person handles it.`
 	}
+	if (name === 'project_server') {
+		const action = String(args.action || '')
+		const saved = readJson('project-server.json', null)
+		if (action === 'stop') {
+			spawnSync('sandbox-dev-stop', { stdio: 'ignore' })
+			return 'Stopped. The saved command stays; restart starts it again.'
+		}
+		if (action !== 'start' && action !== 'restart') throw new Error('action must be start, restart or stop')
+		const command = String((action === 'start' && args.command) || saved?.command || '').trim()
+		if (!command) throw new Error('no command saved yet: call start with the command that runs the project')
+		if (command !== saved?.command) {
+			writeJson('project-server.json', { command, setAt: new Date().toISOString() })
+			event(`the project server is now started with: ${command}`)
+		}
+		// In the background: dependencies and the first start can take minutes.
+		const out = fs.openSync(file('dev-start.log'), 'a')
+		spawn('sandbox-dev-start', ['--restart'], { detached: true, stdio: ['ignore', out, out] }).unref()
+		return `Starting "${command}" (dependencies first when they changed). Look at sandbox_info in a few seconds; the output is in /state/dev.log, the start itself in /state/dev-start.log.`
+	}
 	if (name === 'sandbox_info') {
 		const st = readJson('status.json', null)
 		const events = (() => {
@@ -127,7 +166,7 @@ function call(name, args) {
 			{
 				sandbox: process.env.SANDBOX_NAME,
 				previewForThePerson: st?.preview?.url,
-				projectServer: st && { running: st.preview.devServerUp, port: st.preview.upstreamPort, sharedUrl: st.preview.tunnelUrl || null },
+				projectServer: { command: readJson('project-server.json', null)?.command ?? null, running: st?.preview?.devServerUp ?? null, port: st?.preview?.upstreamPort ?? null, sharedUrl: st?.preview?.tunnelUrl || null },
 				git: st && {
 					branch: st.git.branch,
 					uncommittedFiles: st.git.dirty,
@@ -137,6 +176,7 @@ function call(name, args) {
 					lastSend: st.git.sends?.[0] ?? null,
 					lastPush: st.git.push,
 				},
+				// installing = the sandbox is installing right now; do not install at the same time.
 				dependencies: st?.deps ?? null,
 				projectFiles: process.env.SANDBOX_HOST_FOLDER === '1' ? 'in a folder on the person\'s computer (slower)' : 'inside Docker',
 				yourLastReport: readJson('claude-report.json', null),

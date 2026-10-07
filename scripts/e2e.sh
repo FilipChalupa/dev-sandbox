@@ -57,7 +57,9 @@ $DOCKER volume inspect sandbox-e2e-workspace sandbox-e2e-node-modules dev-sandbo
 $DOCKER exec -u node sandbox-e2e sh -c 'echo "<h1>e2e</h1>" > /workspace/e2e/index.html && test -w /workspace/e2e/node_modules && test -w /cache' || fail "volumes not writable"
 
 echo "== dev server + thumbnail"
-api POST /sandboxes/e2e/dev-start | grep -q '^200' || fail "dev-start"
+api POST /sandboxes/e2e/dev-start | grep -q 'has not set up' || fail "dev-start should not guess before Claude set the server up"
+# What Claude does: the project_server tool of sandbox-mcp.
+$DOCKER exec -u node sandbox-e2e sh -c 'printf "%s\n" "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"project_server\",\"arguments\":{\"action\":\"start\",\"command\":\"python3 -m http.server 3000 --bind 127.0.0.1\"}}}" | sandbox-mcp' | grep -q Starting || fail "project_server start"
 for _ in $(seq 1 30); do st="$(status_of)"; grep -q '"thumb":true' <<<"$st" && break; sleep 3; done
 grep -q '"dev":true' <<<"$st" || fail "dev server not detected: $st"
 grep -q '"thumb":true' <<<"$st" || fail "no thumbnail: $st"
@@ -87,6 +89,12 @@ wait_running
 $DOCKER exec -u node sandbox-e2e test -f /workspace/e2e/index.html || fail "files did not move back into the volume"
 $DOCKER exec $NAME test -f /sandboxes/e2e/MOVED-TO-DOCKER.txt || fail "no note left in the folder"
 $DOCKER exec $NAME test ! -e /sandboxes/e2e/index.html || fail "old copy left in the folder"
+for _ in $(seq 1 30); do st="$(status_of)"; grep -q '"dev":true' <<<"$st" && break; sleep 2; done
+grep -q '"dev":true' <<<"$st" || fail "the project server Claude set up did not come back after a restart: $st"
+
+echo "== storage in diagnostics, clearing the package cache"
+api GET /diagnostics | grep -q '"name":"sandbox-e2e-workspace"' || fail "volume sizes missing in diagnostics"
+api POST /cache/clear | grep -q '^200' || fail "clearing the cache"
 
 echo "== backup"
 api GET /backup | grep -q '"name":"e2e"' || fail "backup does not list the sandbox"

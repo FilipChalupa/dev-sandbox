@@ -48,6 +48,37 @@ async function ensureVolume(name: string, sandbox: string) {
 	await docker.createVolume({ Name: name, Labels: { 'dev-sandbox.volume': sandbox } })
 }
 
+// Our volumes with their size, for diagnostics. `docker system df` measures
+// them, which takes a moment, so only the diagnostics dialog asks.
+export async function volumeSizes() {
+	const df: any = await docker.df()
+	return ((df.Volumes ?? []) as any[])
+		.filter((v) => v.Labels?.['dev-sandbox.volume'] !== undefined)
+		.map((v) => ({ name: v.Name as string, sandbox: v.Labels['dev-sandbox.volume'] as string, sizeMb: Math.max(0, Math.round((v.UsageData?.Size ?? -1) / 1024 ** 2)) }))
+		.sort((a, b) => b.sizeMb - a.sizeMb)
+}
+
+// Empty the shared package cache. It only grows (every version of every
+// package any sandbox ever installed); the next install downloads what it
+// needs again. A short-lived container from the sandbox image does it, so
+// running sandboxes keep their mounts.
+export async function clearCache() {
+	await ensureImage()
+	await ensureVolume(cacheVolume, '')
+	const c = await docker.createContainer({
+		Image: config.image,
+		Entrypoint: ['bash', '-c', 'find /cache -mindepth 1 -maxdepth 1 -exec rm -rf {} +; chown node:node /cache'],
+		User: 'root',
+		HostConfig: { Binds: [`${cacheVolume}:/cache`] },
+	})
+	try {
+		await c.start()
+		await c.wait()
+	} finally {
+		await c.remove({ force: true }).catch(() => {})
+	}
+}
+
 export async function removeVolumes(s: Pick<SandboxConfig, 'volumeId'>, opts: { workspace: boolean }) {
 	const names = [modulesVolume(s), ...(opts.workspace ? [workspaceVolume(s)] : [])]
 	for (const n of names) {

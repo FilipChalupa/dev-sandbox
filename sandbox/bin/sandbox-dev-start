@@ -1,16 +1,28 @@
 #!/usr/bin/env bash
-# Starts the project's dev server without a person typing anything: guesses
-# from package.json (dev / start / serve / preview scripts; dependencies are
-# installed or brought up to date first, see sandbox-deps), falls back to a static
-# server for plain HTML, and as a last resort asks Claude to figure it out.
-# The server runs in a tmux session "dev" so it survives this command.
+# Usage: sandbox-dev-start [--restart]
+# Starts the project server the way Claude set it up (the project_server tool
+# of sandbox-mcp writes project-server.json), in a tmux session "dev" so it
+# survives this command. The sandbox does not guess any more: it used to try
+# package.json scripts and fall back to a hidden Claude run, which picked
+# the wrong command often enough (October 2026). Claude decides once, the
+# sandbox repeats it after a restart, after the developer's merge and from
+# the manager's button. Dependencies are brought up to date first.
+# Exit 3: Claude has not set up the project server yet.
 set -uo pipefail
 source sandbox-lib
 cd "$SANDBOX_WORKSPACE" || exit 1
 
-if tmux has-session -t dev 2>/dev/null; then
-	echo "dev server session already running (sandbox-dev-stop to stop it)"
+if [ "${1:-}" = "--restart" ]; then
+	sandbox-dev-stop >/dev/null 2>&1
+elif tmux has-session -t dev 2>/dev/null; then
+	echo "the project server is running already (sandbox-dev-stop stops it)"
 	exit 0
+fi
+
+cmd="$(jq -r '.command // empty' "$(state_file project-server.json)" 2>/dev/null)"
+if [ -z "$cmd" ]; then
+	echo "Claude has not set up how to run this project yet. Ask Claude to start the website."
+	exit 3
 fi
 
 wait_for_port() {
@@ -22,50 +34,25 @@ wait_for_port() {
 	return 1
 }
 
-cmd=""
-if [ -f package.json ]; then
-	script="$(jq -r '.scripts | keys[]' package.json 2>/dev/null | grep -m1 -x -E 'dev|start|serve|preview' || true)"
-	if [ -n "$script" ]; then
-		pm=npm
-		[ -f pnpm-lock.yaml ] && pm=pnpm
-		[ -f yarn.lock ] && pm=yarn
-		[ -f bun.lockb ] || [ -f bun.lock ] && pm=bun
-		# Missing or stale dependencies (a merge brought new packages) are
-		# installed here, before the server starts; a failed install still
-		# lets the server try with what is there.
-		sandbox-deps --quiet || echo "dependency install failed, starting anyway (see deps.log)"
-		cmd="${pm} run ${script}"
-	fi
-fi
-if [ -z "$cmd" ] && [ -f index.html ]; then
-	cmd="python3 -m http.server 3000 --bind 127.0.0.1"
-fi
+# Missing or stale dependencies (a merge brought new packages); a failed
+# install still lets the server try with what is there.
+[ -f package.json ] && { sandbox-deps --quiet || echo "dependency install failed, starting anyway (see deps.log)"; }
 
-if [ -n "$cmd" ]; then
-	echo "starting: $cmd"
-	: > "$(state_file dev.log)"
-	tmux new-session -d -s dev -c "$SANDBOX_WORKSPACE" "bash -lc '$cmd' 2>&1 | tee -a $(state_file dev.log)"
-	if port="$(wait_for_port 90)"; then
-		write_state upstream-port "$port"
-		sandbox-caddy-reload >/dev/null 2>&1 || true
-		rm -f "$(state_file preview.png)"   # the thumbnail loop shoots a fresh one
-		sandbox-status-write
-		echo "dev server listens on port $port, preview: $SANDBOX_PREVIEW_URL"
-		exit 0
-	fi
-	echo "nothing started listening within 90 s; last output:"
-	tail -n 15 "$(state_file dev.log)"
-	exit 1
-fi
-
-# No recognizable project: let Claude work it out (one non-interactive run).
-echo "no package.json script or index.html found, asking Claude…"
-claude_logged_in || { echo "Claude is not logged in"; exit 1; }
-timeout 240 claude -p --permission-mode bypassPermissions \
-	"Start this project's development server so that it keeps running after you finish (use a tmux session named dev: tmux new-session -d -s dev '<command>'). Read the README and config files to find out how. Do not change project files. When something listens on a port, run: sandbox-preview <port>. Reply with one short line saying what you started and on which port, or why it is not possible." 2>&1 | tail -n 5
-if port="$(wait_for_port 5)"; then
+# The command goes into a file: any quoting in it survives, and a login
+# shell picks the project's Node version (fnm) like Claude's own shell.
+runner="$(state_file project-server.sh)"
+printf 'cd %q\n%s\n' "$SANDBOX_WORKSPACE" "$cmd" > "$runner"
+echo "starting: $cmd"
+: > "$(state_file dev.log)"
+tmux new-session -d -s dev -c "$SANDBOX_WORKSPACE" "bash -l $runner 2>&1 | tee -a $(state_file dev.log)"
+if port="$(wait_for_port 90)"; then
+	write_state upstream-port "$port"
+	sandbox-caddy-reload >/dev/null 2>&1 || true
+	rm -f "$(state_file preview.png)"   # the thumbnail loop shoots a fresh one
 	sandbox-status-write
-	echo "dev server listens on port $port, preview: $SANDBOX_PREVIEW_URL"
+	echo "the project server listens on port $port, preview: $SANDBOX_PREVIEW_URL"
 	exit 0
 fi
+echo "nothing started listening within 90 s; last output:"
+tail -n 15 "$(state_file dev.log)"
 exit 1

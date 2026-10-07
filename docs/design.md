@@ -23,7 +23,7 @@ sandbox. The developer on the team reviews and merges what comes out.
 | Git identity | Taken from the logged-in Claude account (`oauthAccount` in `.claude.json`), overridable. |
 | `.env` | The colleague fills it in with Claude's help. Never committed. |
 | Preview | The container's dev server is reachable on `http://localhost:<port>` through a Caddy reverse proxy. Sharing with others starts a Cloudflare quick tunnel in front of a second Caddy listener with basic auth. No custom domain; the URL changes every time. |
-| How to run the project | Claude reads it from the repository (README, package.json). The sandbox only provides the way out (`sandbox-preview`, `sandbox-share`). |
+| How to run the project | Claude reads it from the repository (README, package.json) and saves the command with the `project_server` tool; the sandbox repeats it after restarts and merges. The sandbox itself never guesses. |
 | Node | Node 24 preinstalled as the default. |
 | Project files | A Docker volume per sandbox by default; a folder in `~/Sandboxes` only when the person turns it on (Docker Desktop's file sharing on a Mac and Windows made a 260 MB install take half an hour). `node_modules` always has its own volume, package downloads one cache volume shared by all sandboxes. |
 | Distribution | Public GitHub repository, public container images on GHCR built by GitHub Actions. |
@@ -197,23 +197,32 @@ Processes inside (the entrypoint restarts any of them that dies):
   on a conflict it replaces the server's branch with the sandbox's state
   (exit 6 only when even that fails), with the outcome in `push-status.json`
   for the card,
-- `sandbox-deps`: the only way dependencies get installed, for Claude and
-  for the scripts (`sandbox-dev-start`, `sandbox-save` after a merge). It
-  installs only when package.json, the lockfile or Node changed, prints the
-  progress, waits visibly for an install already running, prints the error
-  on failure and writes `deps-status.json` (installing / ok / failed) for
-  the card. Nothing installs at container start: an install nobody watched
-  collided with Claude's own and failed unseen,
+- the project server: Claude decides how the project runs and saves it with
+  the `project_server` tool (`project-server.json`); `sandbox-dev-start`
+  runs exactly that in tmux `dev`, at container start, after a merge with
+  new packages and from the card's "start" button. It does not guess any
+  more (package.json scripts and a hidden `claude -p` run picked wrong
+  commands); until Claude set it up, the card says what to tell Claude,
+- `sandbox-deps`, internal: installs from the lockfile before the project
+  server starts and after a merge, only when package.json, the lockfile or
+  Node changed, with a lock and `deps-status.json` (installing / ok /
+  failed) for the card and for Claude. Claude installs with the package
+  manager itself and waits while the sandbox's install runs. Nothing
+  installs on its own at container start: an install nobody watched
+  collided with Claude's and failed unseen,
 - `sandbox-mcp`, an MCP server (stdio, no dependencies) registered next to
-  the Playwright one: the way from Claude to the person's card. Tools:
+  the Playwright one: the way between Claude and the person's card. Tools:
   `report_status` (working / waiting / done / blocked and a sentence, shown
-  on the card, the last three as a browser notification), `request_action`
-  (restart / send / env / other, shown with a button; the manager marks it
-  done or dismissed through `sandbox-request-resolve`) and `sandbox_info`
-  (preview, server, git, dependencies, requests, recent events from
-  `events.log`: starts, merges of the developer's commits, sends, failed
-  installs). Everything goes through files in `/state` that `status.json`
-  already carries to the manager,
+  on the card, the last three as a browser notification; "working" fades
+  after an hour without activity), `request_action` (restart / send / env /
+  other, shown with a button; the manager marks it done or dismissed
+  through `sandbox-request-resolve`), `project_server` (start / restart /
+  stop, see above) and `sandbox_info` (preview, server, git, dependencies,
+  requests, recent events from `events.log`: starts, merges of the
+  developer's commits, sends, failed installs). Everything goes through
+  files in `/state` that `status.json` already carries to the manager. The
+  rules tell Claude to look at `sandbox_info` first in every conversation
+  and get the preview running on its own,
 - `sandbox-status` writing `status.json` (session URL, tunnel URL, upstream
   port, git state, logged-in account) for the manager.
 

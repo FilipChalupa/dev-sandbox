@@ -25,7 +25,7 @@ export type Sandbox = {
 	status: null | {
 		git: { branch: string; remote: string; dirty: number; ahead: number; lastCommit: string; today: string[]; changed: string[]; shortstat: string; sends: { at: string; count: number; sha: string; subject: string }[]; remoteCheck: { ok: boolean | null; at?: string; error?: string }; push: { ok: boolean | null; reason?: string; at?: string; detail?: string }; behind: number }
 		claude: { loggedIn: boolean; email: string; serverRunning: boolean; supervisorRunning: boolean; sessionUrl: string }
-		preview: { url: string; upstreamPort: number; devServerUp: boolean; proxyUp: boolean; lanEnabled: boolean; imageAt: string; tunnelUrl: string; user: string; password: string }
+		preview: { url: string; upstreamPort: number; devServerUp: boolean; proxyUp: boolean; lanEnabled: boolean; imageAt: string; tunnelUrl: string; user: string; password: string; serverCommand?: string }
 		visits: { last: { at: string; via: 'tunnel' | 'lan'; mobile: boolean; path: string } | null; today: number }
 		usage: { today: Usage; week: Usage; updatedAt: string } | null
 		deps?: { state: 'installing' | 'ok' | 'failed'; detail: string; at: string } | null
@@ -77,6 +77,7 @@ export const api = {
 	self_update: () => call<{ ok: boolean }>('POST', '/api/self-update'),
 	action: (name: string, what: 'share' | 'unshare' | 'save' | 'restart-claude' | 'dev-start' | 'dev-stop' | 'remote-check' | 'password-rotate') =>
 		call<{ ok: boolean; output: string }>('POST', `/api/sandboxes/${name}/${what}`),
+	clearCache: () => call<{ ok: boolean }>('POST', '/api/cache/clear'),
 	resolveRequest: (name: string, id: string, outcome: 'done' | 'dismissed') => call<{ ok: boolean }>('POST', `/api/sandboxes/${name}/requests/${id}`, { outcome }),
 	save: (name: string, force: boolean) => call<{ ok: boolean; checksFailed?: boolean; output: string }>('POST', `/api/sandboxes/${name}/save?force=${force ? 1 : 0}`),
 	checkRepo: (body: { repoUrl: string; token: string; username?: string }) => call<{ ok: boolean; branches: string[]; error: string }>('POST', '/api/check-repo', body),

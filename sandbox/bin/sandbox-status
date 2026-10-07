@@ -50,6 +50,7 @@ if [ -f "$(state_file access.log)" ]; then
 fi
 usage="$(cat "$(state_file usage.json)" 2>/dev/null || echo 'null')"
 deps="$(cat "$(state_file deps-status.json)" 2>/dev/null || echo 'null')"
+server_cmd="$(jq -r '.command // empty' "$(state_file project-server.json)" 2>/dev/null)"
 report="$(cat "$(state_file claude-report.json)" 2>/dev/null || echo 'null')"
 jq -e . <<<"$report" >/dev/null 2>&1 || report='null'
 requests="$(cat "$(state_file requests.json)" 2>/dev/null || echo '[]')"
@@ -90,6 +91,7 @@ jq -n \
 	--argjson usage "$usage" \
 	--argjson deps "$deps" \
 	--argjson report "$report" \
+	--arg serverCmd "$server_cmd" \
 	--argjson requests "$requests" \
 	--argjson lastActivity "$activity" \
 	--argjson dirty "${dirty:-0}" \
@@ -107,7 +109,7 @@ jq -n \
 		name: $name,
 		git: { branch: $branch, remote: $remote, dirty: $dirty, ahead: $ahead, lastCommit: $last, today: $today, changed: $changed, shortstat: $shortstat, sends: $sends, remoteCheck: $remoteCheck, push: $push, behind: $behind },
 		claude: { loggedIn: $loggedIn, email: $email, serverRunning: $running, supervisorRunning: $tmuxUp, sessionUrl: $session },
-		preview: { url: $preview, upstreamPort: ($port | tonumber), devServerUp: $devUp, proxyUp: $caddyUp, lanEnabled: $lanEnabled, imageAt: (if $thumbAt > 0 then ($thumbAt | todate) else "" end), tunnelUrl: $tunnel, user: $user, password: $pw },
+		preview: { url: $preview, upstreamPort: ($port | tonumber), devServerUp: $devUp, proxyUp: $caddyUp, lanEnabled: $lanEnabled, imageAt: (if $thumbAt > 0 then ($thumbAt | todate) else "" end), tunnelUrl: $tunnel, user: $user, password: $pw, serverCommand: $serverCmd },
 		visits: $visits,
 		usage: $usage,
 		deps: $deps,

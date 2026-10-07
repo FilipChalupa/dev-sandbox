@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Usage: sandbox-deps [--restart] [--quiet] | sandbox-deps --wait
+# Usage: sandbox-deps [--restart] [--quiet]
 # Installs the project's dependencies when they are missing or out of date.
-# Claude may install on its own too (rules in CLAUDE.local.md); two installs
-# into one node_modules break each other (October 2026: Claude's own
-# `pnpm install` next to the one the sandbox ran at start, both failed with
-# ENOTEMPTY), so the scripts take a lock and Claude waits for it first with
-# --wait, which only waits for a running install and installs nothing.
+# Internal to the sandbox: sandbox-dev-start runs it before the project
+# server, sandbox-save after merging the developer's commits. Claude installs
+# with the package manager itself; it sees an install of ours running in
+# sandbox_info (deps-status.json) and waits for it, because two installs into
+# one node_modules break each other (October 2026: ENOTEMPTY on both).
 #
 # Prints the installer's output as it goes and, on failure, the end of the
 # log, so whoever ran it can read the error and fix it. When another install
@@ -36,12 +36,10 @@ set -uo pipefail
 source sandbox-lib
 restart=0
 quiet=0
-wait_only=0
 for a in "$@"; do
 	case "$a" in
 		--restart) restart=1 ;;
 		--quiet) quiet=1 ;;
-		--wait) wait_only=1 ;;
 	esac
 done
 logf="$(state_file deps.log)"
@@ -58,9 +56,7 @@ if ! flock -n 9; then
 	flock -w 1200 9; got=$?
 	[ -n "$follow" ] && kill "$follow" 2>/dev/null
 	[ "$got" = 0 ] || { echo "the other install is still running after 20 minutes; see $logf"; exit 1; }
-	[ "$wait_only" = 1 ] && echo "that install has finished"
 fi
-[ "$wait_only" = 1 ] && exit 0
 
 # The Node version the project asks for (.nvmrc etc.), as the dev server uses.
 command -v fnm >/dev/null 2>&1 && eval "$(fnm env --shell bash 2>/dev/null)" \

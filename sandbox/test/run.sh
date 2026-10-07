@@ -127,11 +127,8 @@ sleep 0.3
 rc=0; out="$(PATH="$shims:$PATH" sandbox-deps --quiet 2>/dev/null)" || rc=$?
 check "running install: waits and says so" "$(grep -c 'another install' <<<"$out")" "1"
 check "running install: then installs" "$rc" "0"
-( flock 9; sleep 1 ) 9> "$SANDBOX_STATE_DIR/deps.lock" &
-sleep 0.3
-: > "$calls"; rc=0; out="$(PATH="$shims:$PATH" sandbox-deps --wait 2>/dev/null)" || rc=$?
-check "--wait: waits for the running install" "$(grep -c 'has finished' <<<"$out")" "1"
-check "--wait: installs nothing itself" "$(ncalls)" "0"
+rc=0; out="$(sandbox-dev-start 2>&1)" || rc=$?
+check "dev-start: nothing set up, no guessing" "$rc" "3"
 cd /
 
 # sandbox-mcp: the bridge from Claude to the manager card
@@ -140,7 +137,7 @@ mcp() { printf '%s\n' "$@" | sandbox-mcp; }
 init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}'
 out="$(mcp "$init" '{"jsonrpc":"2.0","method":"notifications/initialized"}' '{"jsonrpc":"2.0","id":2,"method":"tools/list"}')"
 check "mcp: answers initialize and tools/list only" "$(wc -l <<<"$out" | tr -d ' ')" "2"
-check "mcp: lists the three tools" "$(tail -n 1 <<<"$out" | jq -r '[.result.tools[].name] | join(",")')" "report_status,request_action,sandbox_info"
+check "mcp: lists the tools" "$(tail -n 1 <<<"$out" | jq -r '[.result.tools[].name] | join(",")')" "report_status,request_action,project_server,sandbox_info"
 mcp "$init" '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"report_status","arguments":{"state":"done","text":"Hotovo, mrkni na náhled."}}}' >/dev/null
 check "mcp: report lands in the state" "$(jq -r '.state + " " + .text' "$SANDBOX_STATE_DIR/claude-report.json")" "done Hotovo, mrkni na náhled."
 out="$(mcp "$init" '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"report_status","arguments":{"state":"nonsense","text":"x"}}}')"

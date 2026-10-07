@@ -101,11 +101,15 @@ sandbox-git-identity || true
 
 # Node version the project asks for (.nvmrc, .node-version, engines.node):
 # install it now in the background so the first command does not wait.
-# Dependencies are not installed here any more: an install nobody watches
-# collided with Claude's own and its failure went unseen. Claude installs
-# them through sandbox-deps when it needs them (rules in CLAUDE.local.md),
-# sandbox-dev-start and sandbox-save do it when they need them.
-( sandbox-node-prepare >> "$(state_file fnm.log)" 2>&1 ) &
+# Dependencies are installed only on the way to the project server
+# (sandbox-dev-start) or by Claude, never on their own: an install nobody
+# watched collided with Claude's and its failure went unseen.
+# Then the project server, when Claude has set it up (project_server tool):
+# after a restart the preview works without anyone asking.
+(
+	sandbox-node-prepare >> "$(state_file fnm.log)" 2>&1
+	[ -s "$(state_file project-server.json)" ] && sandbox-dev-start >> "$(state_file dev-start.log)" 2>&1
+) &
 # An install cut off by the last stop is not running any more.
 grep -q '"installing"' "$(state_file deps-status.json)" 2>/dev/null && rm -f "$(state_file deps-status.json)"
 

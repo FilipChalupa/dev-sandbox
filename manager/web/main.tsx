@@ -649,8 +649,12 @@ function ClaudeNotes({ s, lang, run, onSend }: { s: Sandbox; lang: string; run: 
 	const t = useT()
 	const report = s.status?.report
 	const open = (s.status?.requests ?? []).filter((r) => !r.outcome)
-	// A status from yesterday says nothing about now.
-	const showReport = report && Date.now() - Date.parse(report.at) < 24 * 3600_000
+	// A status from yesterday says nothing about now, and "working" an hour
+	// later without any activity is no longer true (the session ended, the
+	// laptop slept).
+	const age = report ? Date.now() - Date.parse(report.at) : Infinity
+	const stale = report?.state === 'working' && age > 3600_000 && !isRecent(s.status?.lastActivity ?? '', 30 * 60_000)
+	const showReport = report && age < 24 * 3600_000 && !stale
 	if (!showReport && !open.length) return null
 	const resolve = (id: string, outcome: 'done' | 'dismissed') => api.resolveRequest(s.name, id, outcome)
 	return (
@@ -877,7 +881,9 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 			if (what === 'dev-start') setPending({ check: (x) => Boolean(x.status?.preview.devServerUp), until })
 			if (what === 'dev-stop') setPending({ check: (x) => !x.status?.preview.devServerUp, until })
 		} catch (e) {
-			toast('error', humanizeError(e instanceof Error ? e.message : String(e), t))
+			const msg = e instanceof Error ? e.message : String(e)
+			if (/has not set up/.test(msg)) toast('info', t('devNotSetUp'))
+			else toast('error', humanizeError(msg, t))
 		} finally {
 			setBusy('')
 			await run(async () => {})
@@ -951,6 +957,9 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 					{stage.step === 3 && (
 						st.preview.devServerUp ? (
 							<Pill tone="on">{t('devServerUp')}</Pill>
+						) : !st.preview.serverCommand ? (
+							// Claude decides how the project runs (project_server); until then there is nothing to start.
+							<Pill tone="off">{t('devNotSetUp')}</Pill>
 						) : busy === 'dev' || pending ? (
 							<Pill tone="work"><Spinner /> {t('devStarting')}</Pill>
 						) : (
@@ -1026,7 +1035,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 							<div className="links">
 								{st.preview.devServerUp ? (
 									<a className="button" href={st.preview.url} target="_blank" rel="noreferrer"><Icon name="globe" /> {t('openPreview')}</a>
-								) : (
+								) : !st.preview.serverCommand ? null : (
 									<button
 										disabled={waiting}
 										onClick={async () => {
@@ -1315,6 +1324,8 @@ function Diagnostics({ lang, onClose, ready }: { lang: string; onClose: () => vo
 	const t = useT()
 	const [d, setD] = useState<any>(null)
 	const [err, setErr] = useState('')
+	const [clearing, setClearing] = useState(false)
+	const { toast } = useToast()
 	useMirrorLoading(!d && !err)
 	useEffect(() => {
 		api.diagnostics().then(setD).catch((e) => setErr(String(e)))
@@ -1354,6 +1365,34 @@ function Diagnostics({ lang, onClose, ready }: { lang: string; onClose: () => vo
 							{d.disk && <><dt>{t('diagDisk')}</dt><dd>{d.disk.freeGb} GB {t('free')} {t('of')} {d.disk.totalGb} GB</dd></>}
 						</dl>
 					</section>
+					{d.volumes?.length > 0 && (
+						<section>
+							<h3>{t('diagVolumes')}</h3>
+							<dl>
+								{d.volumes.map((v: { name: string; sandbox: string; sizeMb: number }) => (
+									<div key={v.name}>
+										<dt><code>{v.name}</code></dt>
+										<dd>{v.sizeMb >= 1024 ? `${(v.sizeMb / 1024).toFixed(1)} GB` : `${v.sizeMb} MB`} <span className="muted small">{v.sandbox ? t('volumeOf', { name: v.sandbox }) : t('volumeCache')}</span></dd>
+									</div>
+								))}
+							</dl>
+							<div className="row" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
+								<button disabled={clearing} onClick={async () => {
+									setClearing(true)
+									try {
+										await api.clearCache()
+										toast('ok', t('cacheCleared'))
+										setD({ ...d, volumes: await api.diagnostics().then((x: any) => x.volumes).catch(() => d.volumes) })
+									} catch (e) {
+										toast('error', e instanceof Error ? e.message : String(e))
+									} finally {
+										setClearing(false)
+									}
+								}}>{clearing ? <Spinner /> : <Icon name="trash" />} {t('clearCache')}</button>
+								<small>{t('clearCacheHint')}</small>
+							</div>
+						</section>
+					)}
 					<section>
 						<h3>{t('diagImages')}</h3>
 						<dl>

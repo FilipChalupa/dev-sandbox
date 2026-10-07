@@ -43,7 +43,7 @@ const ready: Sandbox = {
 			behind: 0,
 		},
 		claude: { loggedIn: true, email: 'designer@example.com', serverRunning: true, supervisorRunning: true, sessionUrl: 'https://claude.ai/code?environment=env_demo' },
-		preview: { url: 'http://localhost:3001', upstreamPort: 5173, devServerUp: true, proxyUp: true, lanEnabled: true, imageAt: ago(3), tunnelUrl: 'https://quiet-meadow-example.trycloudflare.com', user: 'preview', password: 'kfm4tcqph7xe' },
+		preview: { url: 'http://localhost:3001', upstreamPort: 5173, devServerUp: true, proxyUp: true, lanEnabled: true, imageAt: ago(3), tunnelUrl: 'https://quiet-meadow-example.trycloudflare.com', user: 'preview', password: 'kfm4tcqph7xe', serverCommand: 'pnpm dev' },
 		visits: { last: { at: ago(48), via: 'tunnel', mobile: true, path: '/' }, today: 6 },
 		usage: { today: { messages: 41, input: 900, output: 18_400, cacheRead: 1_150_000, cacheWrite: 62_000 }, week: { messages: 233, input: 5_100, output: 96_000, cacheRead: 7_900_000, cacheWrite: 410_000 }, updatedAt: ago(2) },
 		report: { state: 'done', text: 'The contact page has the new map, have a look at the preview.', at: ago(4) },

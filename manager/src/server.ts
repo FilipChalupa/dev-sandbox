@@ -274,6 +274,15 @@ app.get('/api/stats', async () => {
 	return json(out)
 })
 
+app.post('/api/cache/clear', async () => {
+	try {
+		await dk.clearCache()
+		return json({ ok: true })
+	} catch (e) {
+		return fail(e)
+	}
+})
+
 app.post('/api/prune', async () => {
 	try {
 		return json(await dk.pruneImages())
@@ -561,7 +570,8 @@ app.get('/api/diagnostics', async () => {
 	const limitsGb = sandboxes.reduce((a, s) => a + s.memoryGb, 0)
 	const runningLimitsGb = list.filter((l) => l.container.running).reduce((a, l) => a + (sandboxes.find((s) => s.name === l.name)?.memoryGb ?? 0), 0)
 	const settings = await store.readSettings()
-	return json({ manager: managerVersion, docker, host, disk, dataDir: config.dataDir, hostDir: config.hostDir, image: config.image, sandboxes: list, memory: { limitsGb, runningLimitsGb }, settings, failures: Object.fromEntries(await Promise.all(list.filter((l) => !l.container.running && l.container.exists && l.container.exitCode).map(async (l) => [l.name, await dk.failureReason(l.name)]))) })
+	const volumes = await dk.volumeSizes().catch(() => [])
+	return json({ manager: managerVersion, docker, host, disk, volumes, dataDir: config.dataDir, hostDir: config.hostDir, image: config.image, sandboxes: list, memory: { limitsGb, runningLimitsGb }, settings, failures: Object.fromEntries(await Promise.all(list.filter((l) => !l.container.running && l.container.exists && l.container.exitCode).map(async (l) => [l.name, await dk.failureReason(l.name)]))) })
 })
 
 // Browser terminal: ?cmd=shell | login | claude
