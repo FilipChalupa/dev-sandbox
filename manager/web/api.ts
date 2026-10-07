@@ -1,3 +1,5 @@
+export type ClaudeRequest = { id: string; action: 'restart' | 'send' | 'env' | 'other'; message: string; at: string; outcome?: 'done' | 'dismissed'; resolvedAt?: string }
+
 export type Sandbox = {
 	name: string
 	repoUrl: string
@@ -27,6 +29,9 @@ export type Sandbox = {
 		visits: { last: { at: string; via: 'tunnel' | 'lan'; mobile: boolean; path: string } | null; today: number }
 		usage: { today: Usage; week: Usage; updatedAt: string } | null
 		deps?: { state: 'installing' | 'ok' | 'failed'; detail: string; at: string } | null
+		// From Claude through sandbox-mcp.
+		report?: { state: 'working' | 'waiting' | 'done' | 'blocked'; text: string; at: string } | null
+		requests?: ClaudeRequest[]
 		lastActivity: string
 		updatedAt: string
 	}
@@ -72,6 +77,7 @@ export const api = {
 	self_update: () => call<{ ok: boolean }>('POST', '/api/self-update'),
 	action: (name: string, what: 'share' | 'unshare' | 'save' | 'restart-claude' | 'dev-start' | 'dev-stop' | 'remote-check' | 'password-rotate') =>
 		call<{ ok: boolean; output: string }>('POST', `/api/sandboxes/${name}/${what}`),
+	resolveRequest: (name: string, id: string, outcome: 'done' | 'dismissed') => call<{ ok: boolean }>('POST', `/api/sandboxes/${name}/requests/${id}`, { outcome }),
 	save: (name: string, force: boolean) => call<{ ok: boolean; checksFailed?: boolean; output: string }>('POST', `/api/sandboxes/${name}/save?force=${force ? 1 : 0}`),
 	checkRepo: (body: { repoUrl: string; token: string; username?: string }) => call<{ ok: boolean; branches: string[]; error: string }>('POST', '/api/check-repo', body),
 	claudeLogin: {

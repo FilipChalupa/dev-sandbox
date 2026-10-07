@@ -127,7 +127,33 @@ sleep 0.3
 rc=0; out="$(PATH="$shims:$PATH" sandbox-deps --quiet 2>/dev/null)" || rc=$?
 check "running install: waits and says so" "$(grep -c 'another install' <<<"$out")" "1"
 check "running install: then installs" "$rc" "0"
+( flock 9; sleep 1 ) 9> "$SANDBOX_STATE_DIR/deps.lock" &
+sleep 0.3
+: > "$calls"; rc=0; out="$(PATH="$shims:$PATH" sandbox-deps --wait 2>/dev/null)" || rc=$?
+check "--wait: waits for the running install" "$(grep -c 'has finished' <<<"$out")" "1"
+check "--wait: installs nothing itself" "$(ncalls)" "0"
 cd /
+
+# sandbox-mcp: the bridge from Claude to the manager card
+export SANDBOX_STATE_DIR="$(mktemp -d)"
+mcp() { printf '%s\n' "$@" | sandbox-mcp; }
+init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}'
+out="$(mcp "$init" '{"jsonrpc":"2.0","method":"notifications/initialized"}' '{"jsonrpc":"2.0","id":2,"method":"tools/list"}')"
+check "mcp: answers initialize and tools/list only" "$(wc -l <<<"$out" | tr -d ' ')" "2"
+check "mcp: lists the three tools" "$(tail -n 1 <<<"$out" | jq -r '[.result.tools[].name] | join(",")')" "report_status,request_action,sandbox_info"
+mcp "$init" '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"report_status","arguments":{"state":"done","text":"Hotovo, mrkni na náhled."}}}' >/dev/null
+check "mcp: report lands in the state" "$(jq -r '.state + " " + .text' "$SANDBOX_STATE_DIR/claude-report.json")" "done Hotovo, mrkni na náhled."
+out="$(mcp "$init" '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"report_status","arguments":{"state":"nonsense","text":"x"}}}')"
+check "mcp: bad input is a tool error" "$(tail -n 1 <<<"$out" | jq -r .result.isError)" "true"
+mcp "$init" '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"request_action","arguments":{"action":"restart","message":"Restartuj prosím sandbox."}}}' >/dev/null
+rid="$(jq -r '.[0].id' "$SANDBOX_STATE_DIR/requests.json")"
+check "mcp: request is open" "$(jq -r '.[0].outcome // "open"' "$SANDBOX_STATE_DIR/requests.json")" "open"
+sandbox-request-resolve "$rid" done >/dev/null 2>&1
+check "resolve: request marked done" "$(jq -r '.[0].outcome' "$SANDBOX_STATE_DIR/requests.json")" "done"
+out="$(mcp "$init" '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"sandbox_info","arguments":{}}}')"
+check "mcp: info shows the outcome and the event" "$(tail -n 1 <<<"$out" | jq -r '.result.content[0].text | fromjson | [.requests[0].outcome, (.recentEvents | map(.kind) | index("request") != null)] | map(tostring) | join(" ")')" "done true"
+out="$(mcp '{"jsonrpc":"2.0","id":7,"method":"nope"}')"
+check "mcp: unknown method is an error" "$(jq -r .error.code <<<"$out")" "-32601"
 
 echo
 if [ "$fails" = 0 ]; then echo "all sandbox tests passed"; else echo "$fails sandbox test(s) failed"; exit 1; fi

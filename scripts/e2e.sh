@@ -64,6 +64,13 @@ grep -q '"thumb":true' <<<"$st" || fail "no thumbnail: $st"
 api GET /sandboxes/e2e/preview.png | grep -q '^200' || fail "thumbnail not served"
 echo "   $st"
 
+echo "== claude bridge (sandbox-mcp)"
+$DOCKER exec -u node sandbox-e2e sh -c 'jq -e .mcpServers.sandbox "$CLAUDE_CONFIG_DIR/.claude.json"' >/dev/null || fail "sandbox MCP server not registered"
+$DOCKER exec -u node sandbox-e2e sh -c 'printf "%s\n" "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"request_action\",\"arguments\":{\"action\":\"other\",\"message\":\"e2e\"}}}" | sandbox-mcp && sandbox-status-write' >/dev/null || fail "sandbox-mcp"
+rid="$(api GET /sandboxes | cut -d' ' -f2- | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const s=JSON.parse(d).find(x=>x.name==='e2e');console.log(s?.status?.requests?.[0]?.id??'')})")"
+[ -n "$rid" ] || fail "request not on the card"
+api POST "/sandboxes/e2e/requests/$rid" '{"outcome":"done"}' | grep -q '^200' || fail "resolving the request"
+
 echo "== doctor"
 api POST /sandboxes/e2e/doctor | grep -q '"check":"proxy","ok":true' || fail "doctor"
 

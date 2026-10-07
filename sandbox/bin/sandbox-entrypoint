@@ -80,6 +80,7 @@ if git show-ref --verify --quiet "refs/heads/$SANDBOX_BRANCH"; then
 		&& GIT_TERMINAL_PROMPT=0 git fetch -q origin "$SANDBOX_BRANCH" 2>/dev/null; then
 		if git merge -q --ff-only "origin/$SANDBOX_BRANCH" 2>/dev/null; then
 			log "branch fast-forwarded to origin/$SANDBOX_BRANCH"
+			event merge "the sandbox started and took over new commits from the server (the developer usually merged the main branch in): $(git log -1 --format='%h %s')"
 		elif ! git merge-base --is-ancestor "origin/$SANDBOX_BRANCH" HEAD 2>/dev/null; then
 			log "origin/$SANDBOX_BRANCH has diverged; sandbox-save merges it before the next push"
 		fi
@@ -94,6 +95,7 @@ else
 	git symbolic-ref HEAD "refs/heads/$SANDBOX_BRANCH"
 fi
 log "on branch $(git branch --show-current)"
+event start "sandbox started on branch $(git branch --show-current), project files $([ "${SANDBOX_HOST_FOLDER:-0}" = 1 ] && echo 'in a folder on the computer' || echo 'inside Docker')"
 
 sandbox-git-identity || true
 
@@ -115,6 +117,7 @@ jq --arg ws "$SANDBOX_WORKSPACE" '
 	.projects[$ws].hasTrustDialogAccepted = true
 	| .remoteDialogSeen = true
 	| .hasCompletedOnboarding = true
+	| .mcpServers.sandbox = { command: "sandbox-mcp", args: [] }
 	| .mcpServers.playwright = {
 		command: "playwright-mcp",
 		args: ["--headless", "--isolated", "--no-sandbox", "--executable-path", "/usr/bin/chromium", "--viewport-size", "1280x800", "--output-dir", "/tmp/playwright-mcp"]

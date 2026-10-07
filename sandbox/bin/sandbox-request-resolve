@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Usage: sandbox-request-resolve <id> done|dismissed
+# The person handled a request Claude made through sandbox-mcp
+# (request_action); called by the manager when they press its button.
+set -uo pipefail
+source sandbox-lib
+id="${1:-}"; outcome="${2:-}"
+[[ "$id" =~ ^[a-f0-9]{1,16}$ ]] || { echo "bad id"; exit 2; }
+case "$outcome" in done|dismissed) ;; *) echo "outcome must be done or dismissed"; exit 2 ;; esac
+f="$(state_file requests.json)"
+[ -f "$f" ] || { echo "no requests"; exit 1; }
+tmp="$f.tmp.$$"
+jq --arg id "$id" --arg o "$outcome" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+	'map(if .id == $id then . + {outcome: $o, resolvedAt: $at} else . end)' "$f" > "$tmp" && mv "$tmp" "$f" || { rm -f "$tmp"; exit 1; }
+msg="$(jq -r --arg id "$id" '.[] | select(.id == $id) | .action' "$f")"
+event request "the person $([ "$outcome" = done ] && echo 'handled' || echo 'dismissed') request $id ($msg)"
+sandbox-status-write

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Usage: sandbox-deps [--restart] [--quiet]
+# Usage: sandbox-deps [--restart] [--quiet] | sandbox-deps --wait
 # Installs the project's dependencies when they are missing or out of date.
-# The one way packages get installed in the sandbox, for Claude as well as for
-# the scripts: two installs into one node_modules break each other (October
-# 2026: Claude started its own `pnpm install` next to the one the sandbox ran
-# at start, both failed with ENOTEMPTY and nobody saw why).
+# Claude may install on its own too (rules in CLAUDE.local.md); two installs
+# into one node_modules break each other (October 2026: Claude's own
+# `pnpm install` next to the one the sandbox ran at start, both failed with
+# ENOTEMPTY), so the scripts take a lock and Claude waits for it first with
+# --wait, which only waits for a running install and installs nothing.
 #
 # Prints the installer's output as it goes and, on failure, the end of the
 # log, so whoever ran it can read the error and fix it. When another install
@@ -35,10 +36,12 @@ set -uo pipefail
 source sandbox-lib
 restart=0
 quiet=0
+wait_only=0
 for a in "$@"; do
 	case "$a" in
 		--restart) restart=1 ;;
 		--quiet) quiet=1 ;;
+		--wait) wait_only=1 ;;
 	esac
 done
 logf="$(state_file deps.log)"
@@ -55,7 +58,9 @@ if ! flock -n 9; then
 	flock -w 1200 9; got=$?
 	[ -n "$follow" ] && kill "$follow" 2>/dev/null
 	[ "$got" = 0 ] || { echo "the other install is still running after 20 minutes; see $logf"; exit 1; }
+	[ "$wait_only" = 1 ] && echo "that install has finished"
 fi
+[ "$wait_only" = 1 ] && exit 0
 
 # The Node version the project asks for (.nvmrc etc.), as the dev server uses.
 command -v fnm >/dev/null 2>&1 && eval "$(fnm env --shell bash 2>/dev/null)" \
@@ -117,6 +122,7 @@ if ! install "$exact"; then
 	if ! install "$loose"; then
 		deps_status failed "$(grep -E 'ERR|error|Error' "$logf" | tail -n 1 | cut -c1-300)"
 		log "INSTALL FAILED, see $logf"
+		event deps "installing dependencies failed: $(grep -E 'ERR|error|Error' "$logf" | tail -n 1 | cut -c1-200)"
 		echo "INSTALL FAILED. The end of the log ($logf):"
 		tail -n 25 "$logf"
 		exit 1

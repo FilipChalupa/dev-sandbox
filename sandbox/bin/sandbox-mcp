@@ -1,0 +1,201 @@
+#!/usr/bin/env node
+// MCP server (stdio) that connects Claude with the sandbox manager.
+//
+// Claude talks to the person through claude.ai; the manager is what the
+// person sees on their computer. Until now nothing went from Claude to the
+// card: it could not say "done, look at the preview" to someone who had the
+// claude.ai tab closed, nor ask for a step only the person may take
+// (restart the sandbox, fill in .env, send to the developer). And Claude
+// did not learn what happened around it (the developer took the branch over).
+//
+// Everything goes through files in the state directory, which the manager
+// already reads (status.json carries them to the card):
+//   claude-report.json  the last status Claude reported
+//   requests.json       actions Claude asked the person for, and their outcome
+//   events.log          what happened in the sandbox (merges, starts), tab separated
+//
+// No dependencies on purpose: the protocol is newline-delimited JSON-RPC and
+// the image should not need an npm install for it.
+'use strict'
+const fs = require('node:fs')
+const path = require('node:path')
+const crypto = require('node:crypto')
+
+const stateDir = process.env.SANDBOX_STATE_DIR || '/state'
+const file = (name) => path.join(stateDir, name)
+
+function readJson(name, fallback) {
+	try {
+		return JSON.parse(fs.readFileSync(file(name), 'utf8'))
+	} catch {
+		return fallback
+	}
+}
+// Write through a temp file: the manager may read at any moment.
+function writeJson(name, data) {
+	const tmp = file(`${name}.${process.pid}.tmp`)
+	fs.writeFileSync(tmp, JSON.stringify(data) + '\n')
+	fs.renameSync(tmp, file(name))
+}
+function event(text) {
+	try {
+		fs.appendFileSync(file('events.log'), `${new Date().toISOString()}\tclaude\t${text.replace(/[\t\n]/g, ' ')}\n`)
+	} catch {}
+}
+
+const STATES = ['working', 'waiting', 'done', 'blocked']
+const ACTIONS = ['restart', 'send', 'env', 'other']
+
+const tools = [
+	{
+		name: 'report_status',
+		description:
+			'Show the person what you are doing on their sandbox card in the manager (and as a browser notification for waiting, done and blocked). ' +
+			'Call it when you start a larger task (working), when you need an answer or a decision from the person (waiting), when a change is finished and can be looked at (done), ' +
+			'and when you cannot continue (blocked). One short sentence in the language of the person, no jargon. It replaces the previous status.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				state: { type: 'string', enum: STATES },
+				text: { type: 'string', description: 'One short sentence, e.g. "The new contact page is ready, have a look at the preview."' },
+			},
+			required: ['state', 'text'],
+		},
+	},
+	{
+		name: 'request_action',
+		description:
+			'Ask the person for a step only they can take in the manager; it appears on their sandbox card with a button. ' +
+			'restart: restart the sandbox (after a setting changed, when the sandbox itself is stuck). send: send the work to the developer. ' +
+			'env: put values (keys, passwords) into .env that you must not invent; say which ones and where to get them. other: anything else, described in the message. ' +
+			'Returns an id; sandbox_info shows whether the person did it. Also tell the person in the conversation.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				action: { type: 'string', enum: ACTIONS },
+				message: { type: 'string', description: 'What to do and why, one or two short sentences without jargon.' },
+			},
+			required: ['action', 'message'],
+		},
+	},
+	{
+		name: 'sandbox_info',
+		description:
+			'What the manager knows about this sandbox: preview address and whether the project server runs, the git state (uncommitted, unsent, behind the server, last send), ' +
+			'whether dependencies are being installed or failed, your open requests and their outcome, and recent events such as the developer merging the main branch into this one. ' +
+			'Look at it at the start of a session and when something changed under your hands.',
+		inputSchema: { type: 'object', properties: {} },
+	},
+]
+
+function call(name, args) {
+	if (name === 'report_status') {
+		const state = String(args.state || '')
+		const text = String(args.text || '').trim().slice(0, 300)
+		if (!STATES.includes(state)) throw new Error(`state must be one of ${STATES.join(', ')}`)
+		if (!text) throw new Error('text is empty')
+		writeJson('claude-report.json', { state, text, at: new Date().toISOString() })
+		return 'Shown on the card in the manager.'
+	}
+	if (name === 'request_action') {
+		const action = String(args.action || '')
+		const message = String(args.message || '').trim().slice(0, 500)
+		if (!ACTIONS.includes(action)) throw new Error(`action must be one of ${ACTIONS.join(', ')}`)
+		if (!message) throw new Error('message is empty')
+		// Keep the open ones and the last few answered, so the card stays short.
+		const list = readJson('requests.json', [])
+		const open = list.filter((r) => !r.outcome)
+		const closed = list.filter((r) => r.outcome).slice(-10)
+		const id = crypto.randomBytes(4).toString('hex')
+		writeJson('requests.json', [...closed, ...open, { id, action, message, at: new Date().toISOString() }])
+		event(`asked the person: ${action}: ${message}`)
+		return `Request ${id} is on the card with a button. sandbox_info shows when the person handles it.`
+	}
+	if (name === 'sandbox_info') {
+		const st = readJson('status.json', null)
+		const events = (() => {
+			try {
+				return fs.readFileSync(file('events.log'), 'utf8').trim().split('\n').slice(-15).map((l) => {
+					const [at, kind, text] = l.split('\t')
+					return { at, kind, text }
+				})
+			} catch {
+				return []
+			}
+		})()
+		return JSON.stringify(
+			{
+				sandbox: process.env.SANDBOX_NAME,
+				previewForThePerson: st?.preview?.url,
+				projectServer: st && { running: st.preview.devServerUp, port: st.preview.upstreamPort, sharedUrl: st.preview.tunnelUrl || null },
+				git: st && {
+					branch: st.git.branch,
+					uncommittedFiles: st.git.dirty,
+					unsentCommits: st.git.ahead,
+					behindTheServer: st.git.behind,
+					lastCommit: st.git.lastCommit,
+					lastSend: st.git.sends?.[0] ?? null,
+					lastPush: st.git.push,
+				},
+				dependencies: st?.deps ?? null,
+				projectFiles: process.env.SANDBOX_HOST_FOLDER === '1' ? 'in a folder on the person\'s computer (slower)' : 'inside Docker',
+				yourLastReport: readJson('claude-report.json', null),
+				requests: readJson('requests.json', []),
+				recentEvents: events,
+				statusAt: st?.updatedAt ?? null,
+			},
+			null,
+			2,
+		)
+	}
+	throw new Error(`unknown tool ${name}`)
+}
+
+function send(msg) {
+	process.stdout.write(JSON.stringify(msg) + '\n')
+}
+
+function handle(msg) {
+	const { id, method, params } = msg
+	if (id === undefined || id === null) return // notifications need no answer
+	const ok = (result) => send({ jsonrpc: '2.0', id, result })
+	if (method === 'initialize') {
+		return ok({
+			protocolVersion: params?.protocolVersion || '2025-06-18',
+			capabilities: { tools: {} },
+			serverInfo: { name: 'sandbox', version: '1.0.0' },
+			instructions: 'Connects you with the sandbox manager the person sees: report what you are doing (report_status), ask for steps only they can take (request_action), read the sandbox state (sandbox_info).',
+		})
+	}
+	if (method === 'ping') return ok({})
+	if (method === 'tools/list') return ok({ tools })
+	if (method === 'tools/call') {
+		try {
+			return ok({ content: [{ type: 'text', text: call(params?.name, params?.arguments || {}) }] })
+		} catch (e) {
+			return ok({ content: [{ type: 'text', text: e instanceof Error ? e.message : String(e) }], isError: true })
+		}
+	}
+	send({ jsonrpc: '2.0', id, error: { code: -32601, message: `method not found: ${method}` } })
+}
+
+let buf = ''
+process.stdin.setEncoding('utf8')
+process.stdin.on('data', (chunk) => {
+	buf += chunk
+	let i
+	while ((i = buf.indexOf('\n')) >= 0) {
+		const line = buf.slice(0, i).trim()
+		buf = buf.slice(i + 1)
+		if (!line) continue
+		let msg
+		try {
+			msg = JSON.parse(line)
+		} catch {
+			send({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } })
+			continue
+		}
+		handle(msg)
+	}
+})
+process.stdin.on('end', () => process.exit(0))

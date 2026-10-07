@@ -29,23 +29,21 @@ when a request is ambiguous.
 ## Running the project
 
 - Find out how to run it from the repository (README, `package.json`, etc.).
-- **Dependencies (node_modules) are installed only with `sandbox-deps`**,
-  never with `npm install`, `pnpm install`, `yarn` or `bun install` directly:
-  two installs at once break each other. Run `sandbox-deps` when packages
-  are missing (`command not found` for a tool like `tsx` or `vite`,
-  `Cannot find module`) and after you change package.json yourself
-  (`sandbox-deps --restart` also restarts a running dev server). It does
-  nothing when everything is up to date, takes a minute or two on a first
-  install and prints its progress.
-  - Run it as it is, without `| tail`, `| head` or `2>/dev/null`, so you
-    see the progress and the error. If it says another install is running,
-    let it wait; never kill an install.
-  - When it fails it prints the end of the log (the whole log is
-    `/state/deps.log`). Read the error and fix the cause when it is in the
-    project (a package that does not exist, a wrong Node version: see
-    below), then run `sandbox-deps` again. When the cause is outside the
-    project (no network, the registry is down), tell the person in plain
-    words and suggest trying again later.
+- **Dependencies (node_modules) are yours to install.** Use the project's
+  package manager as usual (`pnpm install`, `pnpm add …`, `npm install`,
+  a clean reinstall when something is broken). `sandbox-deps` is a
+  shortcut: it installs from the lockfile only when package.json, the
+  lockfile or Node changed, and prints the progress and the error.
+  - The sandbox installs on its own only in two places: `sandbox-dev-start`
+    and after the developer's commits are merged in during a save. Two
+    installs into one node_modules break each other, so before you install
+    yourself run `sandbox-deps --wait`: it returns right away, or waits
+    for such an install to finish and shows its progress. Never kill an
+    install.
+  - Run installs as they are, without `| tail`, `| head` or `2>/dev/null`,
+    so you see the progress and the error. When one fails, read the error
+    and fix the cause; when it is outside the project (no network, the
+    registry is down), tell the person in plain words.
 - `sandbox-dev-start` starts the dev server for common setups (package.json
   scripts, plain HTML) in a tmux session named `dev`, installing the
   dependencies first; `sandbox-dev-stop` stops it. When it cannot, start
@@ -61,6 +59,27 @@ when a request is ambiguous.
 - When the person wants to show the site to somebody else, run
   `sandbox-share` and give them the public URL, user name and password it
   prints. `sandbox-unshare` stops sharing. The public URL changes each time.
+
+## Telling the person what is going on (the `sandbox` MCP tools)
+
+The person sees a card for this sandbox in the sandbox manager, often
+without the claude.ai tab open. The `sandbox` MCP tools put things there:
+
+- `report_status`: one short sentence on the card, in the person's
+  language, no jargon. `working` when you start something that takes a
+  while, `waiting` when you need their answer or decision, `done` when a
+  change can be looked at in the preview, `blocked` when you cannot go on.
+  The last three also pop up as a notification, so use them for real
+  moments, not after every small step.
+- `request_action`: a step only the person can take, shown with a button:
+  `restart` (the sandbox itself), `send` (to the developer), `env` (values
+  for `.env` you must not invent; say which and where to get them),
+  `other`. Say it in the conversation too.
+- `sandbox_info`: the preview address, whether the project server runs,
+  git state, dependency installs, your requests and whether the person
+  handled them, and recent events (the developer merged the main branch
+  in, a send, a failed install). Look at it at the start of a session and
+  when files changed under your hands.
 
 ## Seeing the result
 

@@ -38,6 +38,7 @@ if git remote get-url origin >/dev/null 2>&1 && git rev-parse --verify -q HEAD >
 		echo "the server has new commits on $SANDBOX_BRANCH, merging them in…"
 		if git merge --no-edit "origin/$SANDBOX_BRANCH" >/dev/null 2>&1; then
 			echo "merged origin/$SANDBOX_BRANCH"
+			event merge "new commits from the server merged in before sending (the developer usually merged the main branch): $(git log -1 --format='%h %s' "origin/$SANDBOX_BRANCH")"
 			# The merge may bring new or upgraded packages: install them before
 			# the checks below (they would fail on stale node_modules) and
 			# restart the dev server so the preview runs on them.
@@ -49,6 +50,7 @@ if git remote get-url origin >/dev/null 2>&1 && git rev-parse --verify -q HEAD >
 			echo "replacing the server's version with this sandbox's; the developer merges main again later."
 			if out="$(SANDBOX_ALLOW_OVERWRITE=1 git push --force-with-lease="$SANDBOX_BRANCH:origin/$SANDBOX_BRANCH" -u origin "$SANDBOX_BRANCH" 2>&1)"; then
 				printf '%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "overwrote" "$overwritten" "server version replaced after a merge conflict" >> "$(state_file sends.log)"
+				event conflict "the server's branch conflicted and was replaced with this sandbox's ($overwritten overwritten); the developer merges again"
 				push_status true overwrote "server had $overwritten; replaced with $(git rev-parse --short HEAD). The developer needs to merge main into the branch again."
 				echo "pushed $SANDBOX_BRANCH (server version $overwritten replaced)"
 				exit 0
@@ -79,6 +81,7 @@ if git remote get-url origin >/dev/null 2>&1 && git rev-parse --verify -q HEAD >
 			printf '%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$count" "$(git rev-parse --short HEAD)" "$(git log -1 --format=%s)" >> "$(state_file sends.log)"
 			jq -n -c --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{ok:true, at:$at, error:""}' > "$(state_file remote-check.json)"
 			push_status true pushed ""
+			event send "sent to the developer: $count commit(s), $(git log -1 --format='%h %s')"
 			echo "pushed $SANDBOX_BRANCH"
 		else
 			if grep -qiE "authentication|denied|403|401|could not read|not found" <<<"$out"; then

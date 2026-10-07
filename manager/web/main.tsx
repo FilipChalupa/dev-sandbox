@@ -183,6 +183,29 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 					new Notification(t('title'), { body: push!.reason === 'overwrote' ? t('notifyOverwrote', { name: s.name }) : t('notifyRejected', { name: s.name }), icon: '/icon.svg' })
 				} catch {}
 			}
+			// What Claude reported through sandbox-mcp: a finished change, a question,
+			// a blocker, and each new request for the person, once each. Skipped
+			// while the status is missing (a restart), or all of it would look new.
+			if (!s.status) continue
+			const report = s.status.report
+			const reportKey = report && report.state !== 'working' ? `${report.state}@${report.at}` : ''
+			const prevReport = seen.get(`${s.name}/report`)
+			seen.set(`${s.name}/report`, reportKey)
+			if (notify && reportKey && prevReport !== undefined && prevReport !== reportKey) {
+				try {
+					new Notification(`${s.name}: ${t(`report_${report!.state}`)}`, { body: report!.text, icon: '/icon.svg' })
+				} catch {}
+			}
+			const open = (s.status.requests ?? []).filter((r) => !r.outcome)
+			const reqKey = open.map((r) => r.id).join(',')
+			const prevReq = seen.get(`${s.name}/requests`)
+			seen.set(`${s.name}/requests`, reqKey)
+			const fresh = open.filter((r) => prevReq !== undefined && !prevReq.split(',').includes(r.id))
+			if (notify && fresh.length) {
+				try {
+					new Notification(t('notifyRequest', { name: s.name }), { body: fresh[0].message, icon: '/icon.svg' })
+				} catch {}
+			}
 		}
 		// … the login is shared: one notification for all of them.
 		const needsLogin = list.some((s) => s.container.running && s.status && !s.status.claude.loggedIn) ? 'login' : ''
@@ -619,6 +642,41 @@ function Access({ title, icon, url, user, password, extra, onQr, onRotate }: { t
 	)
 }
 
+// What Claude told the person through sandbox-mcp: its last status and the
+// steps it asked for, each with the button that does it.
+const reportTone = { working: 'work', waiting: 'warn', done: 'on', blocked: 'error' } as const
+function ClaudeNotes({ s, lang, run, onSend }: { s: Sandbox; lang: string; run: (fn: () => Promise<unknown>, okText?: string) => Promise<void>; onSend: () => void }) {
+	const t = useT()
+	const report = s.status?.report
+	const open = (s.status?.requests ?? []).filter((r) => !r.outcome)
+	// A status from yesterday says nothing about now.
+	const showReport = report && Date.now() - Date.parse(report.at) < 24 * 3600_000
+	if (!showReport && !open.length) return null
+	const resolve = (id: string, outcome: 'done' | 'dismissed') => api.resolveRequest(s.name, id, outcome)
+	return (
+		<div className="claude-notes">
+			{showReport && (
+				<div className="claude-report">
+					<Pill tone={reportTone[report.state] ?? 'info'}>{t(`report_${report.state}`)}</Pill>
+					<span>{report.text}</span>
+					<span className="muted small"><Rel iso={report.at} lang={lang} /></span>
+				</div>
+			)}
+			{open.map((r) => (
+				<div key={r.id} className="claude-request">
+					<div><Icon name="alert" size={14} /> <strong>{t('requestTitle')}</strong> {r.message}</div>
+					<div className="row">
+						{r.action === 'restart' && <button className="primary" onClick={() => run(async () => { await resolve(r.id, 'done'); await api.start(s.name) })}><Icon name="restart" /> {t('restart')}</button>}
+						{r.action === 'send' && <button className="primary" onClick={() => run(async () => { await resolve(r.id, 'done'); onSend() })}><Icon name="send" /> {t('requestSend')}</button>}
+						{(r.action === 'env' || r.action === 'other') && <button className="primary" onClick={() => run(() => resolve(r.id, 'done'))}><Icon name="check" /> {t('requestDone')}</button>}
+						<button onClick={() => run(() => resolve(r.id, 'dismissed'))}>{t('requestDismiss')}</button>
+					</div>
+				</div>
+			))}
+		</div>
+	)
+}
+
 function Prompts() {
 	const t = useT()
 	const { toast } = useToast()
@@ -939,6 +997,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 						{running && st?.usage && <span title={t('usageHint')}><Icon name="bolt" size={13} /> {t('usageToday')}: {fmtTokens(tokensOf(st.usage.today))} {t('tokens')} · {fmtTokens(tokensOf(st.usage.week))} {t('usageWeek')}</span>}
 					</div>
 
+					{running && st && <ClaudeNotes s={s} lang={lang} run={run} onSend={() => action('save')} />}
 					{!running && !s.failure && s.stoppedReason && (
 						<p className="hint">{t('stoppedIdleText', { hours: s.stoppedReason.hours, when: new Date(s.stoppedReason.at).toLocaleString(lang) })}</p>
 					)}

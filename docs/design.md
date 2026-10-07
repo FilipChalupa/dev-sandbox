@@ -204,6 +204,16 @@ Processes inside (the entrypoint restarts any of them that dies):
   on failure and writes `deps-status.json` (installing / ok / failed) for
   the card. Nothing installs at container start: an install nobody watched
   collided with Claude's own and failed unseen,
+- `sandbox-mcp`, an MCP server (stdio, no dependencies) registered next to
+  the Playwright one: the way from Claude to the person's card. Tools:
+  `report_status` (working / waiting / done / blocked and a sentence, shown
+  on the card, the last three as a browser notification), `request_action`
+  (restart / send / env / other, shown with a button; the manager marks it
+  done or dismissed through `sandbox-request-resolve`) and `sandbox_info`
+  (preview, server, git, dependencies, requests, recent events from
+  `events.log`: starts, merges of the developer's commits, sends, failed
+  installs). Everything goes through files in `/state` that `status.json`
+  already carries to the manager,
 - `sandbox-status` writing `status.json` (session URL, tunnel URL, upstream
   port, git state, logged-in account) for the manager.
 

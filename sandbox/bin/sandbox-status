@@ -50,6 +50,10 @@ if [ -f "$(state_file access.log)" ]; then
 fi
 usage="$(cat "$(state_file usage.json)" 2>/dev/null || echo 'null')"
 deps="$(cat "$(state_file deps-status.json)" 2>/dev/null || echo 'null')"
+report="$(cat "$(state_file claude-report.json)" 2>/dev/null || echo 'null')"
+jq -e . <<<"$report" >/dev/null 2>&1 || report='null'
+requests="$(cat "$(state_file requests.json)" 2>/dev/null || echo '[]')"
+jq -e 'type == "array"' <<<"$requests" >/dev/null 2>&1 || requests='[]'
 jq -e . <<<"$deps" >/dev/null 2>&1 || deps='null'
 jq -e . <<<"$usage" >/dev/null 2>&1 || usage='null'
 if curl -fs --max-time 3 -o /dev/null http://localhost:2019/config/ 2>/dev/null; then caddy_up=true; else caddy_up=false; fi
@@ -85,6 +89,8 @@ jq -n \
 	--argjson visits "$visits" \
 	--argjson usage "$usage" \
 	--argjson deps "$deps" \
+	--argjson report "$report" \
+	--argjson requests "$requests" \
 	--argjson lastActivity "$activity" \
 	--argjson dirty "${dirty:-0}" \
 	--argjson ahead "${ahead:-0}" \
@@ -105,6 +111,8 @@ jq -n \
 		visits: $visits,
 		usage: $usage,
 		deps: $deps,
+		report: $report,
+		requests: $requests,
 		lastActivity: (if $lastActivity > 0 then ($lastActivity | todate) else "" end),
 		updatedAt: (now | todate)
 	}'

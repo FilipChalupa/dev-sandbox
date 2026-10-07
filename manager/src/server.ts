@@ -410,6 +410,18 @@ app.post('/api/sandboxes/:name/dev-start', async (c) => {
 	}
 })
 app.post('/api/sandboxes/:name/dev-stop', action(['sandbox-dev-stop']))
+// The person handled (or dismissed) a request Claude made through sandbox-mcp.
+app.post('/api/sandboxes/:name/requests/:id', async (c) => {
+	try {
+		const id = c.req.param('id')
+		const { outcome } = await c.req.json()
+		if (!/^[a-f0-9]{1,16}$/.test(id) || (outcome !== 'done' && outcome !== 'dismissed')) return json({ error: 'bad request' }, 400)
+		const r = await dk.run(c.req.param('name'), ['sandbox-request-resolve', id, outcome], 30_000)
+		return json({ ok: r.code === 0, output: r.output }, r.code === 0 ? 200 : 400)
+	} catch (e) {
+		return fail(e)
+	}
+})
 app.post('/api/sandboxes/:name/remote-check', action(['sandbox-remote-check']))
 app.post('/api/sandboxes/:name/password-rotate', action(['sandbox-password-rotate']))
 

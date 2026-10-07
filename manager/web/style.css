@@ -231,3 +231,9 @@ legend { padding: 0 6px; font-size: 12px; text-transform: uppercase; letter-spac
 .who { font-weight: normal; margin-left: 10px; display: inline-flex; align-items: center; gap: 4px; }
 @media (max-width: 560px) { .who { display: none; } .banner { flex-wrap: wrap; } }
 .visits { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+
+/* what Claude reported through sandbox-mcp */
+.claude-notes { display: grid; gap: 8px; }
+.claude-report { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.claude-request { display: grid; gap: 8px; padding: 10px 12px; border-radius: 10px; background: var(--warn-bg); font-size: 14px; }
+.claude-request .row { display: flex; flex-wrap: wrap; gap: 8px; }
