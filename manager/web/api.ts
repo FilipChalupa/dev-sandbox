@@ -26,6 +26,7 @@ export type Sandbox = {
 		preview: { url: string; upstreamPort: number; devServerUp: boolean; proxyUp: boolean; lanEnabled: boolean; imageAt: string; tunnelUrl: string; user: string; password: string }
 		visits: { last: { at: string; via: 'tunnel' | 'lan'; mobile: boolean; path: string } | null; today: number }
 		usage: { today: Usage; week: Usage; updatedAt: string } | null
+		deps?: { state: 'installing' | 'ok' | 'failed'; detail: string; at: string } | null
 		lastActivity: string
 		updatedAt: string
 	}

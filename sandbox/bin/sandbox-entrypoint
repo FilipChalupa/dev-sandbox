@@ -98,11 +98,14 @@ log "on branch $(git branch --show-current)"
 sandbox-git-identity || true
 
 # Node version the project asks for (.nvmrc, .node-version, engines.node):
-# install it now in the background so the first command does not wait. Then
-# bring the dependencies up to date: the fast-forward above may have brought
-# a merge with new packages, and Claude may start the dev server by hand
-# instead of through sandbox-dev-start (which checks them too).
-{ sandbox-node-prepare >> "$(state_file fnm.log)" 2>&1; sandbox-deps >/dev/null 2>&1; } &
+# install it now in the background so the first command does not wait.
+# Dependencies are not installed here any more: an install nobody watches
+# collided with Claude's own and its failure went unseen. Claude installs
+# them through sandbox-deps when it needs them (rules in CLAUDE.local.md),
+# sandbox-dev-start and sandbox-save do it when they need them.
+( sandbox-node-prepare >> "$(state_file fnm.log)" 2>&1 ) &
+# An install cut off by the last stop is not running any more.
+grep -q '"installing"' "$(state_file deps-status.json)" 2>/dev/null && rm -f "$(state_file deps-status.json)"
 
 # Claude asks once per directory whether to trust it, and once whether to
 # enable Remote Control. Nobody sits at this terminal, so answer up front.

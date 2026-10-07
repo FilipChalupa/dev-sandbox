@@ -197,6 +197,13 @@ Processes inside (the entrypoint restarts any of them that dies):
   on a conflict it replaces the server's branch with the sandbox's state
   (exit 6 only when even that fails), with the outcome in `push-status.json`
   for the card,
+- `sandbox-deps`: the only way dependencies get installed, for Claude and
+  for the scripts (`sandbox-dev-start`, `sandbox-save` after a merge). It
+  installs only when package.json, the lockfile or Node changed, prints the
+  progress, waits visibly for an install already running, prints the error
+  on failure and writes `deps-status.json` (installing / ok / failed) for
+  the card. Nothing installs at container start: an install nobody watched
+  collided with Claude's own and failed unseen,
 - `sandbox-status` writing `status.json` (session URL, tunnel URL, upstream
   port, git state, logged-in account) for the manager.
 

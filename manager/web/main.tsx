@@ -886,8 +886,10 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 				{primary}
 				<Menu icon="more" label={undefined} items={menuItems} />
 			</div>
-			{running && st && (stage.step === 3 || st.preview.proxyUp === false || s.outdated || s.settingsPending || st.git.remoteCheck?.ok === false || st.git.push?.ok === false || st.git.push?.reason === 'overwrote' || st.git.behind > 0) && (
+			{running && st && (stage.step === 3 || st.preview.proxyUp === false || s.outdated || s.settingsPending || st.git.remoteCheck?.ok === false || st.git.push?.ok === false || st.git.push?.reason === 'overwrote' || st.git.behind > 0 || st.deps?.state === 'installing' || st.deps?.state === 'failed') && (
 				<div className="card-pills">
+					{st.deps?.state === 'installing' && <Pill tone="work"><Spinner /> {t('depsInstalling')}</Pill>}
+					{st.deps?.state === 'failed' && <Pill tone="error"><span title={st.deps.detail}>{t('depsFailed')}</span></Pill>}
 					{stage.step === 3 && (
 						st.preview.devServerUp ? (
 							<Pill tone="on">{t('devServerUp')}</Pill>

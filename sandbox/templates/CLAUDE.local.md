@@ -29,13 +29,28 @@ when a request is ambiguous.
 ## Running the project
 
 - Find out how to run it from the repository (README, `package.json`, etc.).
+- **Dependencies (node_modules) are installed only with `sandbox-deps`**,
+  never with `npm install`, `pnpm install`, `yarn` or `bun install` directly:
+  two installs at once break each other. Run `sandbox-deps` when packages
+  are missing (`command not found` for a tool like `tsx` or `vite`,
+  `Cannot find module`) and after you change package.json yourself
+  (`sandbox-deps --restart` also restarts a running dev server). It does
+  nothing when everything is up to date, takes a minute or two on a first
+  install and prints its progress.
+  - Run it as it is, without `| tail`, `| head` or `2>/dev/null`, so you
+    see the progress and the error. If it says another install is running,
+    let it wait; never kill an install.
+  - When it fails it prints the end of the log (the whole log is
+    `/state/deps.log`). Read the error and fix the cause when it is in the
+    project (a package that does not exist, a wrong Node version: see
+    below), then run `sandbox-deps` again. When the cause is outside the
+    project (no network, the registry is down), tell the person in plain
+    words and suggest trying again later.
 - `sandbox-dev-start` starts the dev server for common setups (package.json
-  scripts, plain HTML) in a tmux session named `dev`; `sandbox-dev-stop`
-  stops it. Dependencies are kept up to date by `sandbox-deps` (at start,
-  before the dev server, after the developer's commits are merged in); after
-  you change package.json yourself, run `sandbox-deps --restart`. When it cannot, start the server yourself so that it keeps
-  running after your command returns (a `tmux` session or `nohup … &`),
-  listening on `127.0.0.1` or `0.0.0.0`.
+  scripts, plain HTML) in a tmux session named `dev`, installing the
+  dependencies first; `sandbox-dev-stop` stops it. When it cannot, start
+  the server yourself so that it keeps running after your command returns
+  (a `tmux` session or `nohup … &`), listening on `127.0.0.1` or `0.0.0.0`.
 - The person sees the project at **${SANDBOX_PREVIEW_URL}**. That address
   proxies to whatever port the dev server listens on inside the sandbox; the
   sandbox detects it on its own. Only if it picks the wrong one, run

@@ -41,7 +41,7 @@ if git remote get-url origin >/dev/null 2>&1 && git rev-parse --verify -q HEAD >
 			# The merge may bring new or upgraded packages: install them before
 			# the checks below (they would fail on stale node_modules) and
 			# restart the dev server so the preview runs on them.
-			sandbox-deps --restart || echo "dependency install failed (see deps.log)"
+			sandbox-deps --restart --quiet || echo "dependency install failed (see deps.log)"
 		else
 			git merge --abort 2>/dev/null || true
 			overwritten="$(git rev-parse --short "origin/$SANDBOX_BRANCH")"

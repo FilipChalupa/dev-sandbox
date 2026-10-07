@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
-# Usage: sandbox-deps [--restart]
+# Usage: sandbox-deps [--restart] [--quiet]
 # Installs the project's dependencies when they are missing or out of date.
+# The one way packages get installed in the sandbox, for Claude as well as for
+# the scripts: two installs into one node_modules break each other (October
+# 2026: Claude started its own `pnpm install` next to the one the sandbox ran
+# at start, both failed with ENOTEMPTY and nobody saw why).
+#
+# Prints the installer's output as it goes and, on failure, the end of the
+# log, so whoever ran it can read the error and fix it. When another install
+# is already running it says so, shows its progress and waits for it.
+# --quiet (the scripts) prints only the result. The state goes to
+# deps-status.json for the manager card: installing / ok / failed.
 #
 # "Out of date" means package.json, the lockfile or the Node version changed
 # since the last install here. That happens without anyone in the sandbox
@@ -24,13 +34,28 @@
 set -uo pipefail
 source sandbox-lib
 restart=0
-[ "${1:-}" = "--restart" ] && restart=1
+quiet=0
+for a in "$@"; do
+	case "$a" in
+		--restart) restart=1 ;;
+		--quiet) quiet=1 ;;
+	esac
+done
+logf="$(state_file deps.log)"
+deps_status() { jq -n -c --arg state "$1" --arg detail "${2:-}" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{state:$state, detail:$detail, at:$at}' > "$(state_file deps-status.json)"; }
 cd "$SANDBOX_WORKSPACE" || exit 0
 [ -f package.json ] || exit 0
 
 # One install at a time: autosave and a manual start can overlap.
 exec 9> "$(state_file deps.lock)"
-flock -w 600 9 || { log "another install is still running"; exit 1; }
+if ! flock -n 9; then
+	echo "another install of the dependencies is running already (sandbox start, a save or an earlier command); waiting for it, its progress:"
+	follow=""
+	if [ "$quiet" = 0 ]; then tail -n 3 -f "$logf" & follow=$!; fi
+	flock -w 1200 9; got=$?
+	[ -n "$follow" ] && kill "$follow" 2>/dev/null
+	[ "$got" = 0 ] || { echo "the other install is still running after 20 minutes; see $logf"; exit 1; }
+fi
 
 # The Node version the project asks for (.nvmrc etc.), as the dev server uses.
 command -v fnm >/dev/null 2>&1 && eval "$(fnm env --shell bash 2>/dev/null)" \
@@ -58,7 +83,7 @@ fi
 
 # Exact first, then a plain install when the lockfile does not fit.
 case "$pm" in
-	pnpm) exact="pnpm install --frozen-lockfile --prefer-offline"; loose="pnpm install --prefer-offline" ;;
+	pnpm) exact="pnpm install --frozen-lockfile --prefer-offline --reporter=append-only"; loose="pnpm install --prefer-offline --reporter=append-only" ;;
 	yarn) exact="yarn install --immutable || yarn install --frozen-lockfile"; loose="yarn install" ;;
 	bun) exact="bun install --frozen-lockfile"; loose="bun install" ;;
 	*)
@@ -71,23 +96,38 @@ case "$pm" in
 		;;
 esac
 
-logf="$(state_file deps.log)"
 log "dependencies changed, installing with $pm"
+deps_status installing "$pm"
 # CI=true: no prompts (pnpm asks before recreating node_modules, corepack before downloading).
 export CI=true COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-{ echo "== $(date '+%Y-%m-%d %H:%M:%S') $exact"; } >> "$logf"
-if ! timeout 900 bash -c "$exact" >> "$logf" 2>&1; then
+# Into the log always, onto the screen unless --quiet.
+install() {
+	echo "== $(date '+%Y-%m-%d %H:%M:%S') $1" >> "$logf"
+	if [ "$quiet" = 1 ]; then
+		timeout 900 bash -c "$1" >> "$logf" 2>&1
+	else
+		echo "\$ $1"
+		timeout 900 bash -c "$1" 2>&1 | tee -a "$logf"
+		return "${PIPESTATUS[0]}"
+	fi
+}
+if ! install "$exact"; then
 	echo "== exact install failed, trying: $loose" >> "$logf"
-	if ! timeout 900 bash -c "$loose" >> "$logf" 2>&1; then
+	[ "$quiet" = 1 ] || echo "the exact install from the lockfile failed, trying: $loose"
+	if ! install "$loose"; then
+		deps_status failed "$(grep -E 'ERR|error|Error' "$logf" | tail -n 1 | cut -c1-300)"
 		log "INSTALL FAILED, see $logf"
-		tail -n 15 "$logf" >&2
+		echo "INSTALL FAILED. The end of the log ($logf):"
+		tail -n 25 "$logf"
 		exit 1
 	fi
 fi
 mkdir -p node_modules
 # Fingerprint after the install: a loose install may have rewritten the lockfile.
 fingerprint > "$stamp_file"
+deps_status ok "$pm"
 log "dependencies installed"
+echo "dependencies installed"
 
 # Release the lock first: sandbox-dev-start runs sandbox-deps itself and would
 # otherwise wait on the lock this process (and its inherited fd) still holds.

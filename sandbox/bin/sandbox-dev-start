@@ -33,7 +33,7 @@ if [ -f package.json ]; then
 		# Missing or stale dependencies (a merge brought new packages) are
 		# installed here, before the server starts; a failed install still
 		# lets the server try with what is there.
-		sandbox-deps || echo "dependency install failed, starting anyway (see deps.log)"
+		sandbox-deps --quiet || echo "dependency install failed, starting anyway (see deps.log)"
 		cmd="${pm} run ${script}"
 	fi
 fi

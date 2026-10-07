@@ -92,7 +92,7 @@ shims="$(mktemp -d)"; calls="$shims/calls"
 for m in pnpm npm; do
 	# A fake manager: records how it was called and creates node_modules;
 	# FAIL_EXACT makes the exact install (ci / --frozen-lockfile) fail.
-	printf '#!/usr/bin/env bash\necho "%s $*" >> "%s"\ncase "$*" in *ci*|*frozen*) [ -n "${FAIL_EXACT:-}" ] && exit 1 ;; esac\nmkdir -p node_modules\n' "$m" "$calls" > "$shims/$m"
+	printf '#!/usr/bin/env bash\necho "%s $*" >> "%s"\necho "fake progress"\n[ -n "${FAIL_ALL:-}" ] && { echo "ERR_FAKE broken package"; exit 1; }\ncase "$*" in *ci*|*frozen*) [ -n "${FAIL_EXACT:-}" ] && exit 1 ;; esac\nmkdir -p node_modules\n' "$m" "$calls" > "$shims/$m"
 	chmod +x "$shims/$m"
 done
 deps() { PATH="$shims:$PATH" sandbox-deps "$@" >/dev/null 2>&1; }
@@ -100,7 +100,10 @@ ncalls() { [ -f "$calls" ] && wc -l < "$calls" | tr -d ' ' || echo 0; }
 cd "$SANDBOX_WORKSPACE"
 deps; check "no package.json: nothing to do" "$(ncalls)" "0"
 echo '{"name":"p"}' > package.json && echo 'lock: 1' > pnpm-lock.yaml
-deps; check "pnpm: first install is exact" "$(tail -n 1 "$calls")" "pnpm install --frozen-lockfile --prefer-offline"
+out="$(PATH="$shims:$PATH" sandbox-deps 2>/dev/null)"
+check "pnpm: first install is exact" "$(tail -n 1 "$calls")" "pnpm install --frozen-lockfile --prefer-offline --reporter=append-only"
+check "the installer's output is shown" "$(grep -c 'fake progress' <<<"$out")" "1"
+check "state for the card: ok" "$(jq -r .state "$SANDBOX_STATE_DIR/deps-status.json")" "ok"
 deps; check "unchanged: no second install" "$(ncalls)" "1"
 echo 'lock: 2' > pnpm-lock.yaml
 deps; check "changed lockfile: install again" "$(ncalls)" "2"
@@ -113,6 +116,17 @@ FAIL_EXACT=1 PATH="$shims:$PATH" sandbox-deps >/dev/null 2>&1; rc=$?
 check "lockfile out of sync: falls back to a plain install" "$(tail -n 1 "$calls")" "npm install --no-audit --no-fund"
 check "fallback install succeeds" "$rc" "0"
 deps; check "after the fallback: up to date (ci + install, nothing more)" "$(ncalls)" "3"
+echo '{"name":"p","dependencies":{"y":"1"}}' > package.json
+rc=0; out="$(FAIL_ALL=1 PATH="$shims:$PATH" sandbox-deps --quiet 2>/dev/null)" || rc=$?
+check "failed install: exit 1" "$rc" "1"
+check "failed install: the error is shown even with --quiet" "$(grep -q ERR_FAKE <<<"$out" && echo yes)" "yes"
+check "state for the card: failed with the error" "$(jq -r .detail "$SANDBOX_STATE_DIR/deps-status.json")" "ERR_FAKE broken package"
+# Another install holds the lock: say so and wait for it instead of starting a second one.
+( flock 9; sleep 2 ) 9> "$SANDBOX_STATE_DIR/deps.lock" &
+sleep 0.3
+rc=0; out="$(PATH="$shims:$PATH" sandbox-deps --quiet 2>/dev/null)" || rc=$?
+check "running install: waits and says so" "$(grep -c 'another install' <<<"$out")" "1"
+check "running install: then installs" "$rc" "0"
 cd /
 
 echo
