@@ -19,6 +19,7 @@ H='x-sandbox-manager: 1'
 cleanup() {
 	$DOCKER exec $NAME node -e "fetch('http://localhost:8787/api/sandboxes/e2e?files=1',{method:'DELETE',headers:{'x-sandbox-manager':'1'}}).catch(()=>{})" >/dev/null 2>&1 || true
 	$DOCKER rm -f $NAME sandbox-e2e >/dev/null 2>&1 || true
+	$DOCKER volume rm sandbox-e2e-workspace sandbox-e2e-node-modules >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 fail() { echo "FAIL: $*" >&2; $DOCKER logs $NAME 2>&1 | tail -20 >&2; $DOCKER logs sandbox-e2e 2>&1 | tail -20 >&2 || true; exit 1; }
@@ -50,8 +51,12 @@ grep -q '"running":true' <<<"$st" || fail "not running: $st"
 grep -q '"proxy":true' <<<"$st" || fail "proxy not up: $st"
 echo "   $st"
 
+echo "== project in a volume by default"
+[ ! -e "$HOST_DIR/e2e" ] || [ -z "$(ls -A "$HOST_DIR/e2e" 2>/dev/null)" ] || fail "new sandbox should not use the home folder"
+$DOCKER volume inspect sandbox-e2e-workspace sandbox-e2e-node-modules dev-sandbox-cache >/dev/null || fail "volumes missing"
+$DOCKER exec -u node sandbox-e2e sh -c 'echo "<h1>e2e</h1>" > /workspace/e2e/index.html && test -w /workspace/e2e/node_modules && test -w /cache' || fail "volumes not writable"
+
 echo "== dev server + thumbnail"
-$DOCKER exec $NAME node -e "require('fs').writeFileSync('/sandboxes/e2e/index.html','<h1>e2e</h1>')"
 api POST /sandboxes/e2e/dev-start | grep -q '^200' || fail "dev-start"
 for _ in $(seq 1 30); do st="$(status_of)"; grep -q '"thumb":true' <<<"$st" && break; sleep 3; done
 grep -q '"dev":true' <<<"$st" || fail "dev server not detected: $st"
@@ -62,6 +67,20 @@ echo "   $st"
 echo "== doctor"
 api POST /sandboxes/e2e/doctor | grep -q '"check":"proxy","ok":true' || fail "doctor"
 
+echo "== move into the home folder and back"
+wait_running() { for _ in $(seq 1 40); do st="$(status_of)"; grep -q '"proxy":true' <<<"$st" && return 0; sleep 3; done; fail "not up again: $st"; }
+api PATCH /sandboxes/e2e '{"hostFolder":true}' | grep -q '"settingsPending":true' || fail "folder change should ask for a restart"
+api POST /sandboxes/e2e/start | grep -q '^200' || fail "restart with the folder"
+wait_running
+$DOCKER exec $NAME test -f /sandboxes/e2e/index.html || fail "files did not move into the folder"
+$DOCKER exec -u node sandbox-e2e test -f /workspace/e2e/index.html || fail "project missing after the move"
+api PATCH /sandboxes/e2e '{"hostFolder":false}' >/dev/null
+api POST /sandboxes/e2e/start | grep -q '^200' || fail "restart without the folder"
+wait_running
+$DOCKER exec -u node sandbox-e2e test -f /workspace/e2e/index.html || fail "files did not move back into the volume"
+$DOCKER exec $NAME test -f /sandboxes/e2e/MOVED-TO-DOCKER.txt || fail "no note left in the folder"
+$DOCKER exec $NAME test ! -e /sandboxes/e2e/index.html || fail "old copy left in the folder"
+
 echo "== backup"
 api GET /backup | grep -q '"name":"e2e"' || fail "backup does not list the sandbox"
 
@@ -70,4 +89,5 @@ api POST /sandboxes/e2e/stop | grep -q '^200' || fail "stop"
 sleep 2
 grep -q '"running":false' <<<"$(status_of)" || fail "still running"
 api DELETE '/sandboxes/e2e?files=1' | grep -q '^200' || fail "delete"
+! $DOCKER volume inspect sandbox-e2e-workspace >/dev/null 2>&1 || fail "volume left after deleting with files"
 echo "all e2e checks passed"

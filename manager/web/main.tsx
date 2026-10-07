@@ -467,7 +467,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 			)}
 
 			{modal?.kind === 'create' && (
-				<SandboxForm
+				<SandboxForm hostDir={host.hostDir}
 					initial={modal.initial}
 					onCancel={close}
 					onSubmit={async (body) => {
@@ -481,7 +481,7 @@ function App({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
 				/>
 			)}
 			{modal?.kind === 'edit' && (
-				<SandboxForm existing={modal.s} onCancel={close} onSubmit={async (body) => { await run(async () => { const { newName, ...rest } = body as { newName?: string }; const r = (await api.update(modal.s.name, rest)) as Sandbox & { pendingNote?: string }; if (r.pendingNote === 'branch') toast('info', t('branchDeferred')); if (newName) await api.rename(modal.s.name, newName) }); close() }} />
+				<SandboxForm hostDir={host.hostDir} existing={modal.s} onCancel={close} onSubmit={async (body) => { await run(async () => { const { newName, ...rest } = body as { newName?: string }; const r = (await api.update(modal.s.name, rest)) as Sandbox & { pendingNote?: string }; if (r.pendingNote === 'branch') toast('info', t('branchDeferred')); if (newName) await api.rename(modal.s.name, newName) }); close() }} />
 			)}
 			{modal?.kind === 'terminal' && <Terminal name={modal.name} cmd={modal.cmd} onClose={close} />}
 			{modal?.kind === 'logs' && <Logs name={modal.name} onClose={close} />}
@@ -851,7 +851,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 
 	const canSend = Boolean(st && (st.git.dirty > 0 || st.git.ahead > 0 || st.git.behind > 0 || st.git.push?.ok === false || !st.git.remote))
 	const menuItems = [
-		...(running ? [{ label: t('stop'), icon: 'stop', onClick: () => run(() => api.stop(s.name)) }] : []),
+		...(running ? [{ label: t('stop'), icon: 'stop', warn: true, onClick: () => run(() => api.stop(s.name)) }] : []),
 		{ label: t('edit'), icon: 'settings', onClick: () => setModal({ kind: 'edit', s }) },
 		{ header: t('groupProject') },
 		{ label: t('changesToday'), icon: 'history', onClick: () => setModal({ kind: 'changes', name: s.name }), disabled: !running },
@@ -914,7 +914,9 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 					<div className="meta">
 						<span><Icon name="git" size={13} /> {s.repoUrl ? (links.repo ? <a className="meta-link" href={links.repo} target="_blank" rel="noreferrer">{s.repoUrl.replace(/^https?:\/\//, '')}</a> : s.repoUrl) : t('noRemote')}</span>
 						<span>{t('branch')}: {links.branch ? <a href={links.branch} target="_blank" rel="noreferrer"><code>{st?.git.branch || s.branch}</code></a> : <code>{st?.git.branch || s.branch}</code>}</span>
-						<button
+						{!s.hostFolder ? (
+							<span title={t('inDockerHint')}><Icon name="folder" size={13} /> {t('inDocker')}</span>
+						) : <button
 							className="meta-link"
 							title={host.helper ? t('openFolder', { app: platform === 'mac' ? t('appFinder') : platform === 'win' ? t('appExplorer') : t('appFiles') }) : t('copyFolder')}
 							onClick={async () => {
@@ -930,7 +932,7 @@ function SandboxCard({ s, focus, usage, host, lang, lanHost, lanHosts, onLanHost
 							}}
 						>
 							<Icon name="folder" size={13} /> {folderPath(host.hostDir, s.name)}
-						</button>
+						</button>}
 						{running && usage && <span title={t('memoryLimits')}>{t('usage', { cpu: usage.cpuPercent, mem: (usage.memMb / 1024).toFixed(1), limit: (usage.memLimitMb / 1024).toFixed(0) })}</span>}
 						{running && st?.usage && <span title={t('usageHint')}><Icon name="bolt" size={13} /> {t('usageToday')}: {fmtTokens(tokensOf(st.usage.today))} {t('tokens')} · {fmtTokens(tokensOf(st.usage.week))} {t('usageWeek')}</span>}
 					</div>
@@ -1365,7 +1367,7 @@ function DeleteDialog({ s, onCancel, onConfirm }: { s: Sandbox; onCancel: () => 
 	)
 }
 
-function SandboxForm({ existing, initial, onSubmit, onCancel }: { existing?: Sandbox; initial?: Partial<Sandbox> & { token?: string }; onSubmit: (body: object) => Promise<void>; onCancel: () => void }) {
+function SandboxForm({ existing, initial, hostDir, onSubmit, onCancel }: { existing?: Sandbox; initial?: Partial<Sandbox> & { token?: string }; hostDir: string; onSubmit: (body: object) => Promise<void>; onCancel: () => void }) {
 	const t = useT()
 	const [name, setName] = useState(existing?.name ?? (initial?.name || nameFromRepo(initial?.repoUrl ?? '')))
 	const [nameTouched, setNameTouched] = useState(Boolean(existing || initial?.name))
@@ -1382,6 +1384,7 @@ function SandboxForm({ existing, initial, onSubmit, onCancel }: { existing?: San
 	const [cpus, setCpus] = useState(existing?.cpus ?? 2)
 	const [idleStopHours, setIdleStopHours] = useState(existing?.idleStopHours ?? 4)
 	const [lanPreview, setLanPreview] = useState(existing?.lanPreview ?? true)
+	const [hostFolder, setHostFolder] = useState(existing?.hostFolder ?? false)
 	const [instructions, setInstructions] = useState(existing?.instructions ?? initial?.instructions ?? '')
 	const [startNow, setStartNow] = useState(true)
 	const [busy, setBusy] = useLocalLoading()
@@ -1416,7 +1419,7 @@ function SandboxForm({ existing, initial, onSubmit, onCancel }: { existing?: San
 	const submit = async (e: FormEvent) => {
 		e.preventDefault()
 		setBusy(true)
-		const body: Record<string, unknown> = { repoUrl, branch: branch || undefined, autostart, memoryGb, cpus, idleStopHours, lanPreview, instructions }
+		const body: Record<string, unknown> = { repoUrl, branch: branch || undefined, autostart, memoryGb, cpus, idleStopHours, lanPreview, hostFolder, instructions }
 		if (!existing) {
 			body.name = name
 			body.startNow = startNow
@@ -1479,6 +1482,10 @@ function SandboxForm({ existing, initial, onSubmit, onCancel }: { existing?: San
 				<label className="check">
 					<input type="checkbox" checked={lanPreview} onChange={(e) => setLanPreview(e.target.checked)} /> {t('lanPreview')}
 				</label>
+				<label className="check">
+					<input type="checkbox" checked={hostFolder} onChange={(e) => setHostFolder(e.target.checked)} /> {t('hostFolder')}
+				</label>
+				<small>{t('hostFolderHint', { path: folderPath(hostDir, name || 'name') })}{existing && existing.hostFolder !== hostFolder ? ' ' + t('hostFolderMove') : ''}</small>
 				<label>{t('idleStop')}<input type="number" min={0} step={1} value={idleStopHours} onChange={(e) => setIdleStopHours(Number(e.target.value))} /></label>
 				</fieldset>
 				<fieldset>

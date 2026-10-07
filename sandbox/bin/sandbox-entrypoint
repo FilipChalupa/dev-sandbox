@@ -122,7 +122,14 @@ jq --arg ws "$SANDBOX_WORKSPACE" '
 sandbox-rules-write >/dev/null
 mkdir -p .git/info
 grep -qx 'CLAUDE.local.md' .git/info/exclude 2>/dev/null || echo 'CLAUDE.local.md' >> .git/info/exclude
-for x in .env .playwright-mcp/; do
+# pnpm used to keep its store inside the project (.pnpm-store); the package
+# cache is a shared volume now (npm_config_store_dir). An old untracked store
+# is just a cache: drop it, it once ended up committed with 30 000 files.
+if [ -n "${npm_config_store_dir:-}" ] && [ -d .pnpm-store ] && [ -z "$(git ls-files -- .pnpm-store | head -n 1)" ]; then
+	log "removing the old package store inside the project (.pnpm-store)"
+	rm -rf .pnpm-store &   # in the background: on a shared folder it takes minutes
+fi
+for x in .env .playwright-mcp/ .pnpm-store/; do
 	grep -qx "$x" .git/info/exclude 2>/dev/null || echo "$x" >> .git/info/exclude
 done
 

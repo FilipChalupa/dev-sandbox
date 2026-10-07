@@ -60,7 +60,7 @@ export function Menu({ label, icon, items, align = 'right', badge }: {
 	icon?: string
 	badge?: boolean
 	align?: 'left' | 'right'
-	items: ({ label: string; icon?: string; onClick: () => void; danger?: boolean; badge?: boolean; disabled?: boolean } | 'sep' | { custom: ReactNode } | { header: string })[]
+	items: ({ label: string; icon?: string; onClick: () => void; danger?: boolean; warn?: boolean; badge?: boolean; disabled?: boolean } | 'sep' | { custom: ReactNode } | { header: string })[]
 }) {
 	const [open, setOpen] = useState(false)
 	const ref = useRef<HTMLDivElement>(null)
@@ -97,7 +97,7 @@ export function Menu({ label, icon, items, align = 'right', badge }: {
 							<button
 								key={i}
 								role="menuitem"
-								className={`menu-item${it.danger ? ' danger' : ''}`}
+								className={`menu-item${it.danger ? ' danger' : it.warn ? ' warn' : ''}`}
 								disabled={it.disabled}
 								onClick={() => {
 									setOpen(false)

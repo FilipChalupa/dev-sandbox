@@ -16,6 +16,12 @@ export type SandboxConfig = {
 	cpus: number
 	idleStopHours: number
 	lanPreview: boolean
+	// The project folder also in the person's Sandboxes folder (Finder,
+	// Explorer). Off: the files live in a Docker volume, which is many times
+	// faster on a Mac and on Windows (installs, dev servers, git).
+	hostFolder: boolean
+	// Name part of the Docker volumes; stays the same through a rename.
+	volumeId: string
 	createdAt: string
 }
 
@@ -27,7 +33,8 @@ export async function readAll(): Promise<SandboxConfig[]> {
 	try {
 		const list = JSON.parse(await fs.readFile(file(), 'utf8')) as Partial<SandboxConfig>[]
 		return list
-			.map((s, i) => ({ ...defaults, autostart: false, gitUsername: '', instructions: '', order: i, ...s }) as SandboxConfig)
+			// Sandboxes from before the volumes kept their files in the folder.
+			.map((s, i) => ({ ...defaults, autostart: false, gitUsername: '', instructions: '', order: i, hostFolder: true, volumeId: s.name, ...s }) as SandboxConfig)
 			.sort((a, b) => a.order - b.order)
 	} catch {
 		return []
@@ -71,6 +78,11 @@ export async function create(input: Partial<SandboxConfig> & { name: string; tok
 		input.gitUsername = input.gitUsername || creds.username
 	}
 	const used = new Set(list.map((s) => s.hostPort))
+	// A deleted sandbox may have left its volume; a new one with the same name
+	// takes it over, but never one a renamed sandbox still uses.
+	const volumes = new Set(list.map((s) => s.volumeId))
+	let volumeId = input.volumeId || input.name
+	for (let i = 2; volumes.has(volumeId); i++) volumeId = `${input.name}-${i}`
 	let port = config.firstPort
 	while (used.has(port)) port++
 	const sandbox: SandboxConfig = {
@@ -87,9 +99,11 @@ export async function create(input: Partial<SandboxConfig> & { name: string; tok
 		cpus: input.cpus ?? defaults.cpus,
 		idleStopHours: input.idleStopHours ?? defaults.idleStopHours,
 		lanPreview: input.lanPreview ?? defaults.lanPreview,
+		hostFolder: input.hostFolder ?? false,
+		volumeId,
 		createdAt: new Date().toISOString(),
 	}
-	await fs.mkdir(path.join(config.dataDir, sandbox.name), { recursive: true })
+	if (sandbox.hostFolder) await fs.mkdir(path.join(config.dataDir, sandbox.name), { recursive: true })
 	await fs.mkdir(managerDir(sandbox.name), { recursive: true })
 	await fs.mkdir(managerDir('claude'), { recursive: true })
 	if (input.token) await setToken(sandbox.name, input.token)
@@ -123,6 +137,7 @@ export async function update(name: string, patch: Partial<SandboxConfig> & { tok
 	if (patch.cpus !== undefined) sandbox.cpus = Math.max(0.5, Number(patch.cpus) || defaults.cpus)
 	if (patch.idleStopHours !== undefined) sandbox.idleStopHours = Math.max(0, Number(patch.idleStopHours) || 0)
 	if (patch.lanPreview !== undefined) sandbox.lanPreview = Boolean(patch.lanPreview)
+	if (patch.hostFolder !== undefined) sandbox.hostFolder = Boolean(patch.hostFolder)
 	if (patch.token !== undefined) await setToken(name, patch.token)
 	await writeAll(list)
 	return sandbox

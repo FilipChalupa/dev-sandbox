@@ -90,6 +90,21 @@ Create a sandbox (or click the link from your developer), start it, log in
 to Claude the first time (the card walks you through it), then
 "Open in claude.ai".
 
+### Where the project files are
+
+A new sandbox keeps the project inside Docker (a volume). On a Mac and on
+Windows a folder shared from your computer goes through Docker Desktop's
+file sharing, which is many times slower: installing a project's packages
+took half an hour there instead of a minute. Claude and the preview do not
+need the folder; the card says "files inside Docker".
+
+To see the files in Finder or Explorer, turn on **Project folder on this
+computer too** in the sandbox settings and restart it: the files move to
+`~/Sandboxes/<name>`. Turning it off moves them back and leaves a note in
+the folder. The installed packages (`node_modules`) stay in Docker either
+way, and downloaded packages are cached once for all sandboxes. Sandboxes
+created before this setting existed keep their folder until you turn it off.
+
 ### Update and uninstall
 
 "Update manager" in the gear menu replaces the manager itself; "Update
@@ -97,7 +112,7 @@ sandboxes" pulls the newest sandbox image (restart a sandbox to use it).
 Running the installer again does the same as "Update manager" and is the way
 to update a manager older than September 2026 (which could not update itself).
 `installer/uninstall.sh` removes everything; add `--purge` to delete
-`~/Sandboxes` too.
+`~/Sandboxes` and the projects kept inside Docker too.
 
 ### Without the installer
 

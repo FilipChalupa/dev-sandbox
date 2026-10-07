@@ -25,6 +25,7 @@ sandbox. The developer on the team reviews and merges what comes out.
 | Preview | The container's dev server is reachable on `http://localhost:<port>` through a Caddy reverse proxy. Sharing with others starts a Cloudflare quick tunnel in front of a second Caddy listener with basic auth. No custom domain; the URL changes every time. |
 | How to run the project | Claude reads it from the repository (README, package.json). The sandbox only provides the way out (`sandbox-preview`, `sandbox-share`). |
 | Node | Node 24 preinstalled as the default. |
+| Project files | A Docker volume per sandbox by default; a folder in `~/Sandboxes` only when the person turns it on (Docker Desktop's file sharing on a Mac and Windows made a 260 MB install take half an hour). `node_modules` always has its own volume, package downloads one cache volume shared by all sandboxes. |
 | Distribution | Public GitHub repository, public container images on GHCR built by GitHub Actions. |
 
 ## Verified facts about Claude Code (September 2026)
@@ -46,10 +47,12 @@ Mac
 │   │     http://localhost:8787
 │   ├── sandbox "site-a"   (container from the dev-sandbox image)
 │   ├── sandbox "site-b"
+│   ├── volumes: sandbox-site-a-workspace (the repository), sandbox-site-a-node-modules,
+│   │            dev-sandbox-cache (pnpm store, npm/yarn/bun caches of all sandboxes)
 │   └── ...
 └── ~/Sandboxes/
-    ├── site-a/          bind mount, the repository, visible in Finder
-    ├── site-b/
+    ├── site-b/          the repository, when "project folder on this computer" is on
+    │                    (bind mount, visible in Finder; node_modules still a volume)
     └── .manager/
         ├── claude/      shared Claude config dir (login, transcripts)
         ├── site-a/      config.json, status.json, logs, git credentials
@@ -204,6 +207,13 @@ and writes `CLAUDE.local.md` into the repository (excluded through
 `.git/info/exclude`) with the rules for Claude: work only on this branch, commit
 and push after each finished change, where to put attachments, how to share
 the preview.
+
+When the folder setting changes, the manager mounts the previous place at
+`/import` on the next start and `sandbox-init` (still root) moves the files
+when the new place is empty (`tar`, without `node_modules`), empties the old
+place and leaves `MOVED-TO-DOCKER.txt` in the folder; when both places hold
+a project it touches neither. The volumes are named after a `volumeId`
+fixed at creation, so a rename keeps them.
 
 Each sandbox mounts its workspace at `/workspace/<name>` so that transcripts
 and Remote Control records in the shared Claude config dir do not collide.

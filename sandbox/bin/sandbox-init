@@ -1,15 +1,60 @@
 #!/usr/bin/env bash
 # Runs as root: makes the mounted directories writable for the sandbox user,
-# then hands over to sandbox-entrypoint as that user.
+# moves the project between the home folder and the Docker volume when that
+# setting changed, then hands over to sandbox-entrypoint as that user.
 set -euo pipefail
 : "${SANDBOX_NAME:?SANDBOX_NAME is required}"
 state="${SANDBOX_STATE_DIR:-/state}"
 workspace="/workspace/${SANDBOX_NAME}"
 claude="${CLAUDE_CONFIG_DIR:-/home/node/.claude}"
+marker=MOVED-TO-DOCKER.txt
 mkdir -p "$state" "$workspace" "$claude"
 chown -R node:node "$state" "$claude"
-# The workspace can be large: only fix it when the top directory is not ours.
-if [ "$(stat -c %u "$workspace")" != "$(id -u node)" ]; then
-	chown -R node:node "$workspace" 2>/dev/null || true
+say() { printf '[sandbox %s] %s\n' "$(date '+%H:%M:%S')" "$*"; }
+
+# Fresh volumes belong to root: the project, its node_modules and the shared
+# package cache. Only the top directory is checked, the project can be large.
+for d in "$workspace" "$workspace/node_modules" /cache; do
+	[ -d "$d" ] || continue
+	if [ "$(stat -c %u "$d")" != "$(id -u node)" ]; then
+		chown -R node:node "$d" 2>/dev/null || true
+	fi
+done
+
+# First entry of a directory that belongs to the project (not packages, not our note).
+project_files() { find "$1" -mindepth 1 -maxdepth 1 ! -name node_modules ! -name "$marker" ! -name .DS_Store ! -name .pnpm-store 2>/dev/null | head -n 1; }
+
+# --- the "project folder on this computer" setting changed ------------------
+# The manager mounts the previous place at /import. The files move only when
+# the new place is still empty; when both hold a project, nothing is touched.
+if [ "${SANDBOX_HOST_FOLDER:-0}" = 1 ]; then where='the folder on this computer'; else where='the Docker volume'; fi
+if [ -d /import ] && [ -n "$(project_files /import)" ]; then
+	if [ -n "$(project_files "$workspace")" ]; then
+		say "both the folder on this computer and the Docker volume hold this project; using $where, the other copy stays untouched"
+	else
+		say "moving the project into $where…"
+		# node_modules has its own volume and packages a shared cache: neither moves.
+		if tar -C /import --exclude=./node_modules --exclude=./.pnpm-store --exclude="./$marker" -cf - . | tar -C "$workspace" -xf -; then
+			rm -f "$workspace/$marker"
+			chown -R node:node "$workspace" 2>/dev/null || true
+			find /import -mindepth 1 -maxdepth 1 ! -name node_modules -exec rm -rf {} + 2>/dev/null || true
+			# Old packages in a shared folder: tens of thousands of files, minutes
+			# to delete there. In the background, the sandbox does not need them.
+			(rm -rf /import/node_modules 2>/dev/null || true) &
+			if [ "${SANDBOX_HOST_FOLDER:-0}" != 1 ]; then
+				printf '%s\n' \
+					'The files of this project now live inside Docker, where installing' \
+					'packages and running the project are many times faster.' \
+					'' \
+					'To have them in this folder again, turn on "Project folder on this' \
+					'computer" in the sandbox settings and restart the sandbox.' \
+					> "/import/$marker"
+			fi
+			say "project moved"
+		else
+			say "MOVING FAILED, both copies are kept"
+		fi
+	fi
 fi
+
 exec setpriv --reuid=node --regid=node --init-groups sandbox-entrypoint "$@"

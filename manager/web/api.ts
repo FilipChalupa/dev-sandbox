@@ -12,6 +12,7 @@ export type Sandbox = {
 	cpus: number
 	idleStopHours: number
 	lanPreview: boolean
+	hostFolder: boolean
 	lanPort: number
 	hasToken: boolean
 	container: { exists: boolean; running: boolean; status: string; image: string; imageId: string; exitCode: number; finishedAt: string }

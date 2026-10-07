@@ -180,6 +180,7 @@ app.post('/api/sandboxes/:name/reset', async (c) => locked(c.req.param('name'), 
 		if (!s.repoUrl) return json({ error: 'No git repository, nothing to restore from' }, 400)
 		await dk.removeContainer(name)
 		await store.resetFiles(name)
+		await dk.removeVolumes(s, { workspace: true })
 		await dk.start(s)
 		return json(await describe(s))
 	} catch (e) {
@@ -195,6 +196,9 @@ app.post('/api/sandboxes/:name/rename', async (c) => locked(c.req.param('name'),
 		const wasRunning = (await dk.containerState(name)).running
 		await dk.removeContainer(name)
 		const s = await store.rename(name, String(newName ?? ''))
+		// The volumes keep their name (volumeId); only the installed packages go,
+		// they remember the old path and are installed again in a minute.
+		await dk.removeVolumes(s, { workspace: false })
 		if (wasRunning) await dk.start(s)
 		return json(await describe(s))
 	} catch (e) {
@@ -227,8 +231,12 @@ app.post('/api/settings', async (c) => {
 app.delete('/api/sandboxes/:name', async (c) => {
 	try {
 		const name = c.req.param('name') ?? ''
+		const s = (await store.readAll()).find((x) => x.name === name)
+		const files = c.req.query('files') === '1'
 		await dk.removeContainer(name)
-		await store.remove(name, c.req.query('files') === '1')
+		await store.remove(name, files)
+		// Without "delete files" the project volume stays for a new sandbox of the same name.
+		if (s) await dk.removeVolumes(s, { workspace: files })
 		return json({ ok: true })
 	} catch (e) {
 		return fail(e)
@@ -325,7 +333,8 @@ app.post('/api/restore', async (c) => {
 			if (!b?.name) continue
 			if (existing.has(b.name)) { skipped.push(b.name); continue }
 			const { hostPort, createdAt, token, ...rest } = b
-			await store.create({ ...rest, token })
+			// Backups from before the volumes: those sandboxes had their files in the folder.
+			await store.create({ hostFolder: true, ...rest, token })
 			added++
 		}
 		if (data.settings?.timeZone) await store.writeSettings({ timeZone: data.settings.timeZone })

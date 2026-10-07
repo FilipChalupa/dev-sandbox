@@ -1,6 +1,7 @@
 import Docker from 'dockerode'
 import { config, hostManagerDir } from './config.js'
 import { lanPort, readSettings, type SandboxConfig } from './store.js'
+import fs from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
 import { createHash } from 'node:crypto'
@@ -9,10 +10,59 @@ export const docker = new Docker()
 
 const containerName = (name: string) => config.containerPrefix + name
 
+/*
+	Where the files live. By default the project is in a Docker volume: on a Mac
+	and on Windows a folder shared from the host goes through a slow file
+	sharing layer, and an install of tens of thousands of small files took
+	half an hour there (October 2026). node_modules always has its own volume,
+	so it stays fast even when the person wants the folder in their home, and
+	survives switching between the two. Downloaded packages go to one cache
+	volume shared by all sandboxes.
+*/
+export const workspaceVolume = (s: Pick<SandboxConfig, 'volumeId'>) => `${config.containerPrefix}${s.volumeId}-workspace`
+export const modulesVolume = (s: Pick<SandboxConfig, 'volumeId'>) => `${config.containerPrefix}${s.volumeId}-node-modules`
+export const cacheVolume = 'dev-sandbox-cache'
+// Left in the home folder after the files moved into the volume.
+export const movedMarker = 'MOVED-TO-DOCKER.txt'
+
+async function volumeExists(name: string) {
+	try {
+		await docker.getVolume(name).inspect()
+		return true
+	} catch {
+		return false
+	}
+}
+
+// Does the project folder in the person's home hold files (not just the marker)?
+async function hostFolderHasFiles(name: string) {
+	try {
+		return (await fs.readdir(path.join(config.dataDir, name))).some((f) => f !== movedMarker && f !== 'node_modules' && f !== '.DS_Store')
+	} catch {
+		return false
+	}
+}
+
+// Created up front with a label, so uninstall --purge can find them.
+async function ensureVolume(name: string, sandbox: string) {
+	await docker.createVolume({ Name: name, Labels: { 'dev-sandbox.volume': sandbox } })
+}
+
+export async function removeVolumes(s: Pick<SandboxConfig, 'volumeId'>, opts: { workspace: boolean }) {
+	const names = [modulesVolume(s), ...(opts.workspace ? [workspaceVolume(s)] : [])]
+	for (const n of names) {
+		try {
+			await docker.getVolume(n).remove({ force: true })
+		} catch (e: any) {
+			if (e?.statusCode !== 404) throw e
+		}
+	}
+}
+
 // Settings that only take effect when the container is created again
 // (limits, restart policy and instructions are applied live, see applyLive).
 export function configFingerprint(s: SandboxConfig) {
-	const relevant = [s.repoUrl, s.gitUsername, s.hostPort]
+	const relevant = [s.repoUrl, s.gitUsername, s.hostPort, s.hostFolder]
 	return createHash('sha1').update(JSON.stringify(relevant)).digest('hex').slice(0, 12)
 }
 
@@ -94,7 +144,20 @@ export async function start(sandbox: SandboxConfig) {
 	await ensureImage()
 	await removeContainer(sandbox.name)
 	const hostWorkspace = path.posix.join(config.hostDir, sandbox.name)
+	const ws = `/workspace/${sandbox.name}`
 	const tz = (await readSettings()).timeZone
+	/*
+		The setting changed since the last start: the files are still in the
+		other place. Mount it at /import; sandbox-init moves the files over
+		when the new place is empty (and leaves both alone when it is not).
+	*/
+	if (sandbox.hostFolder) await fs.mkdir(path.join(config.dataDir, sandbox.name), { recursive: true })
+	else await ensureVolume(workspaceVolume(sandbox), sandbox.name)
+	await ensureVolume(modulesVolume(sandbox), sandbox.name)
+	await ensureVolume(cacheVolume, '')
+	const binds = sandbox.hostFolder
+		? [`${hostWorkspace}:${ws}`, ...((await volumeExists(workspaceVolume(sandbox))) ? [`${workspaceVolume(sandbox)}:/import`] : [])]
+		: [`${workspaceVolume(sandbox)}:${ws}`, ...((await hostFolderHasFiles(sandbox.name)) ? [`${hostWorkspace}:/import`] : [])]
 	const container = await docker.createContainer({
 		name: containerName(sandbox.name),
 		Image: config.image,
@@ -108,11 +171,20 @@ export async function start(sandbox: SandboxConfig) {
 			...(tz ? [`TZ=${tz}`] : []),
 			`SANDBOX_AUTOSAVE_MINUTES=${sandbox.autosaveMinutes}`,
 			`SANDBOX_PREVIEW_URL=http://localhost:${sandbox.hostPort}`,
+			`SANDBOX_HOST_FOLDER=${sandbox.hostFolder ? 1 : 0}`,
+			// Package managers keep their downloads in the shared cache volume
+			// (pnpm used to put its store into the project as .pnpm-store).
+			'npm_config_store_dir=/cache/pnpm-store',
+			'npm_config_cache=/cache/npm',
+			'YARN_CACHE_FOLDER=/cache/yarn',
+			'BUN_INSTALL_CACHE_DIR=/cache/bun',
 		],
 		ExposedPorts: { '8080/tcp': {}, '8081/tcp': {} },
 		HostConfig: {
 			Binds: [
-				`${hostWorkspace}:/workspace/${sandbox.name}`,
+				...binds,
+				`${modulesVolume(sandbox)}:${ws}/node_modules`,
+				`${cacheVolume}:/cache`,
 				`${hostManagerDir(sandbox.name)}:/state`,
 				`${hostManagerDir('claude')}:/home/node/.claude`,
 			],

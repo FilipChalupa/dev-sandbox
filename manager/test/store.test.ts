@@ -61,4 +61,26 @@ describe('sandbox store', () => {
 		await store.update('i', { instructions: '' })
 		await expect(fs.stat(path.join(dir, '.manager', 'i', 'instructions.md'))).rejects.toThrow()
 	})
+	it('keeps new projects in a volume, older ones in their folder', async () => {
+		const n = await store.create({ name: 'new' })
+		expect(n.hostFolder).toBe(false)
+		expect(n.volumeId).toBe('new')
+		await expect(fs.stat(path.join(dir, 'new'))).rejects.toThrow()
+		// A config written before the setting existed.
+		const file = path.join(dir, '.manager', 'sandboxes.json')
+		const list = JSON.parse(await fs.readFile(file, 'utf8'))
+		list.push({ name: 'old', repoUrl: '', branch: 'sandbox/old', hostPort: 3009, autosaveMinutes: 10, createdAt: '' })
+		await fs.writeFile(file, JSON.stringify(list))
+		const old = (await store.readAll()).find((s) => s.name === 'old')!
+		expect(old.hostFolder).toBe(true)
+		expect(old.volumeId).toBe('old')
+		expect((await store.update('old', { hostFolder: false })).hostFolder).toBe(false)
+	})
+	it('does not hand a renamed sandbox volume to a new one', async () => {
+		await store.create({ name: 'a' })
+		await store.rename('a', 'b')
+		const again = await store.create({ name: 'a' })
+		expect(again.volumeId).toBe('a-2')
+		expect((await store.readAll()).find((s) => s.name === 'b')!.volumeId).toBe('a')
+	})
 })

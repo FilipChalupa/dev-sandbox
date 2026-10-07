@@ -19,6 +19,7 @@ const ready: Sandbox = {
 	cpus: 2,
 	idleStopHours: 4,
 	lanPreview: true,
+	hostFolder: false,
 	lanPort: 13001,
 	hasToken: true,
 	container: { exists: true, running: true, status: 'running', image: 'ghcr.io/example/dev-sandbox:latest', imageId: 'sha256:demo', exitCode: 0, finishedAt: '' },
