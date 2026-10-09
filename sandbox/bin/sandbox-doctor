@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Checks the things that usually go wrong and prints one JSON line per check:
-# {"check":"…","ok":true|false,"detail":"…"}
+# {"check":"…","ok":true|false,"detail":"…"} — plus "fix":"<name>" when the
+# card can repair it (POST /api/sandboxes/:name/doctor/fix/<name>).
 set -uo pipefail
 source sandbox-lib
 cd "$SANDBOX_WORKSPACE" 2>/dev/null || true
-say() { jq -n -c --arg c "$1" --argjson ok "$2" --arg d "$3" '{check:$c, ok:$ok, detail:$d}'; }
+say() { jq -n -c --arg c "$1" --argjson ok "$2" --arg d "$3" --arg f "${4:-}" '{check:$c, ok:$ok, detail:$d} + (if $f == "" then {} else {fix:$f} end)'; }
 
 if claude_logged_in; then say login true "$(claude auth status 2>/dev/null | jq -r '.email // ""')"; else say login false "not logged in"; fi
 
@@ -26,6 +27,8 @@ if [ -d .git ]; then
 		say remote true "no remote configured"
 	fi
 	if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ] || [ -f .git/MERGE_HEAD ]; then say gitState false "merge or rebase in progress"; else say gitState true "on $(git branch --show-current)"; fi
+	# A lock left behind by a git that died blocks every git command (9. 10.).
+	if lock="$(sandbox-git-unlock --check)"; then say gitLock true "$lock"; else say gitLock false "$lock" gitLock; fi
 	if git config user.email >/dev/null 2>&1; then say identity true "$(git config user.name) <$(git config user.email)>"; else say identity false "no commit identity yet"; fi
 else
 	say remote false "not a git repository"

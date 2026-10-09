@@ -19,7 +19,7 @@ sandbox. The developer on the team reviews and merges what comes out.
 | UI for the colleague | claude.ai/code or the Claude mobile app for talking to Claude. A small local web UI (the manager) for creating, starting and stopping sandboxes. No terminal. |
 | Git hosting | Any HTTPS remote with a token (Bitbucket repository access tokens, GitHub fine-grained tokens). Fetch and push only, no pull request API. |
 | Branching | One long-lived working branch per sandbox. The developer merges the branch into main when asked and merges main back into the branch afterwards; the sandbox brings that merge in itself (fast-forward at start, a merge before every push, never a rebase). On a real conflict the sandbox's version wins: it replaces the server's copy of the branch (force-with-lease, the overwritten commit is recorded) and the developer redoes the merge with the conflict resolved on their side, after which the sandbox fast-forwards again. No automatic pulls of the base branch otherwise. |
-| Commits | Claude commits and pushes after each finished change (instructed through CLAUDE.md). An optional autosave timer commits and pushes `wip` commits when the tree is dirty, as a safety net. |
+| Commits | Claude commits and pushes after each finished change through `sandbox-save` (instructed through CLAUDE.md). An optional autosave timer commits and pushes `wip` commits when the tree is dirty, as a safety net — only in a quiet moment (no file changed for two minutes), never alongside another save, Claude's git or an install. Saves take turns (a lock); a git lock left behind by a killed git is removed at start and before saving, so it can no longer stop the sandbox. |
 | Git identity | Taken from the logged-in Claude account (`oauthAccount` in `.claude.json`), overridable. |
 | `.env` | The colleague fills it in with Claude's help. Never committed. |
 | Preview | The container's dev server is reachable on `http://localhost:<port>` through a Caddy reverse proxy. Sharing with others starts a Cloudflare quick tunnel in front of a second Caddy listener with basic auth. No custom domain; the URL changes every time. |
@@ -193,7 +193,8 @@ Processes inside (the entrypoint restarts any of them that dies):
 - `sandbox-port-watch`: follows whatever port the dev server listens on and
   points Caddy at it, so nothing has to be configured per project,
 - `sandbox-save`: commit everything, merge what the server has on the
-  branch, run the project's checks, push (used by autosave and the UI);
+  branch, run the project's checks, push (used by autosave, the UI and
+  Claude, one at a time);
   on a conflict it replaces the server's branch with the sandbox's state
   (exit 6 only when even that fails), with the outcome in `push-status.json`
   for the card,

@@ -1228,12 +1228,27 @@ function Logs({ name, onClose }: { name: string; onClose: () => void }) {
 
 function Doctor({ name, onClose }: { name: string; onClose: () => void }) {
 	const t = useT()
-	const [checks, setChecks] = useState<{ check: string; ok: boolean; detail: string }[] | null>(null)
+	const [checks, setChecks] = useState<{ check: string; ok: boolean; detail: string; fix?: string }[] | null>(null)
 	const [err, setErr] = useState('')
+	const [fixing, setFixing] = useState('')
+	const { toast } = useToast()
 	useMirrorLoading(!checks && !err)
+	const load = () => api.doctor(name).then((r) => setChecks(r.checks)).catch((e) => setErr(humanizeError(String(e), t)))
 	useEffect(() => {
-		api.doctor(name).then((r) => setChecks(r.checks)).catch((e) => setErr(humanizeError(String(e), t)))
+		void load()
 	}, [name])
+	// A repair the check offers (a git lock left behind, 9. 10.); then check again.
+	const fix = async (what: string) => {
+		setFixing(what)
+		try {
+			await api.doctorFix(name, what)
+			toast('ok', t('doctorFixed'))
+		} catch (e) {
+			toast('error', humanizeError(e instanceof Error ? e.message : String(e), t))
+		}
+		await load()
+		setFixing('')
+	}
 	const label = (c: string) => {
 		const key = `check${c[0].toUpperCase()}${c.slice(1)}` as Parameters<typeof t>[0]
 		try { return t(key) } catch { return c }
@@ -1248,7 +1263,17 @@ function Doctor({ name, onClose }: { name: string; onClose: () => void }) {
 						<li key={c.check} className={c.ok ? 'ok' : 'bad'}>
 							<Icon name={c.ok ? 'check' : 'alert'} />
 							<span className="k">{label(c.check)}</span>
-							<span className="muted">{c.detail}</span>
+							<span className="muted">
+								{c.detail}
+								{!c.ok && c.fix && (
+									<>
+										{' '}
+										<button className="small" disabled={fixing !== ''} onClick={() => void fix(c.fix!)}>
+											{fixing === c.fix ? <Spinner /> : t('doctorFix')}
+										</button>
+									</>
+								)}
+							</span>
 						</li>
 					))}
 				</ul>

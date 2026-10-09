@@ -24,9 +24,13 @@ Before anything else, call `sandbox_info`. Then, without being asked:
 
 - Work only on the branch `${SANDBOX_BRANCH}`. Never switch branches, never
   push to any other branch, never force push, never rewrite history.
-- After each finished change, commit with a short message that says what
-  changed and push (`git push`). `sandbox-save "message"` does both. The developer on the team merges this branch
-  when the person asks them to.
+- After each finished change, save it with `sandbox-save "short message
+  that says what changed"` — it commits and pushes. Use it instead of
+  `git commit` and `git push`: it takes turns with the autosave and the
+  Send button, so two of them never write to git at once. The developer
+  on the team merges this branch when the person asks them to.
+- If git says `.git/index.lock` exists, run `sandbox-git-unlock` (it
+  removes only a lock no running git owns) and try again.
 - Never commit `.env` or other secrets. When the project needs values in
   `.env`, ask the person for them and write them there.
 - The developer merges the main branch back into this branch after each

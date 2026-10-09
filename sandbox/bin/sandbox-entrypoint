@@ -39,63 +39,16 @@ fi
 
 # --- git: repository and branch -------------------------------------------
 cd "$SANDBOX_WORKSPACE"
-# A start interrupted in the middle of init/clone leaves a broken .git behind.
-if [ -d .git ] && ! git rev-parse --git-dir >/dev/null 2>&1; then
-	log "repository metadata is broken, setting it up again"
-	rm -rf .git
-	repair=1
+rc=0
+repo_url="$repo_url" sandbox-git-prepare || rc=$?
+[ "$rc" = 3 ] && exit 3
+if [ "$rc" != 0 ]; then
+	# Start anyway: Claude and the preview are how the person fixes things.
+	log "GIT NOT READY (exit $rc), starting anyway; see the lines above"
+	event git-error "the repository could not be prepared at start (exit $rc); the sandbox started anyway — run the sandbox check"
 fi
-if [ ! -d .git ]; then
-	if [ -n "$repo_url" ]; then
-		log "cloning $repo_url"
-		git init -q .
-		git remote add origin "$repo_url"
-		if ! out="$(GIT_TERMINAL_PROMPT=0 git fetch -q origin 2>&1)"; then
-			log "CLONE FAILED: $(tail -n 2 <<<"$out" | tr '\n' ' ')"
-			rm -rf .git
-			exit 3
-		fi
-		git remote set-head origin -a >/dev/null 2>&1 || true
-		default="$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
-		# -f: files from an interrupted earlier clone may already be in the way
-		[ -n "$default" ] && git checkout -q -f "$default" 2>/dev/null || true
-	else
-		log "no repository URL, starting an empty project"
-		git init -q -b "$SANDBOX_BRANCH" .
-		cp /opt/sandbox/templates/gitignore .gitignore
-	fi
-fi
-if [ -n "$repo_url" ]; then
-	if git remote get-url origin >/dev/null 2>&1; then
-		git remote set-url origin "$repo_url"
-	else
-		git remote add origin "$repo_url"
-	fi
-fi
-if git show-ref --verify --quiet "refs/heads/$SANDBOX_BRANCH"; then
-	git checkout -q "$SANDBOX_BRANCH"
-	# Bring in what the server has on the branch when it is a plain fast-forward
-	# (the developer merged main into it); anything else waits for sandbox-save.
-	if git remote get-url origin >/dev/null 2>&1 && [ -z "$(git --no-optional-locks status --porcelain --untracked-files=no)" ] \
-		&& GIT_TERMINAL_PROMPT=0 git fetch -q origin "$SANDBOX_BRANCH" 2>/dev/null; then
-		if git merge -q --ff-only "origin/$SANDBOX_BRANCH" 2>/dev/null; then
-			log "branch fast-forwarded to origin/$SANDBOX_BRANCH"
-			event merge "the sandbox started and took over new commits from the server (the developer usually merged the main branch in): $(git log -1 --format='%h %s')"
-		elif ! git merge-base --is-ancestor "origin/$SANDBOX_BRANCH" HEAD 2>/dev/null; then
-			log "origin/$SANDBOX_BRANCH has diverged; sandbox-save merges it before the next push"
-		fi
-	fi
-elif git remote get-url origin >/dev/null 2>&1 \
-	&& git ls-remote --exit-code --heads origin "$SANDBOX_BRANCH" >/dev/null 2>&1; then
-	git fetch -q origin "$SANDBOX_BRANCH"
-	git checkout -q -b "$SANDBOX_BRANCH" --track "origin/$SANDBOX_BRANCH"
-elif git rev-parse --verify -q HEAD >/dev/null; then
-	git checkout -q -b "$SANDBOX_BRANCH"
-else
-	git symbolic-ref HEAD "refs/heads/$SANDBOX_BRANCH"
-fi
-log "on branch $(git branch --show-current)"
-event start "sandbox started on branch $(git branch --show-current), project files $([ "${SANDBOX_HOST_FOLDER:-0}" = 1 ] && echo 'in a folder on the computer' || echo 'inside Docker')"
+log "on branch $(git branch --show-current 2>/dev/null || echo '?')"
+event start "sandbox started on branch $(git branch --show-current 2>/dev/null), project files $([ "${SANDBOX_HOST_FOLDER:-0}" = 1 ] && echo 'in a folder on the computer' || echo 'inside Docker')"
 
 sandbox-git-identity || true
 

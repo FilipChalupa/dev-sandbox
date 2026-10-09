@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Safety net: every N minutes run sandbox-save. N comes from
+# Safety net: every N minutes run sandbox-save --auto. N comes from
 # /state/autosave-minutes (changed live by the manager), 0 switches it off.
+# --auto saves only in a quiet moment and never alongside another save,
+# Claude's git or an install (see sandbox-save); otherwise it tries again
+# a minute later instead of waiting for the next N.
 source sandbox-lib
 n=0
 while true; do
@@ -10,6 +13,10 @@ while true; do
 	[ "$interval" = "0" ] && { n=0; continue; }
 	n=$((n + 1))
 	[ "$n" -ge "$interval" ] || continue
+	out="$(sandbox-save --auto 2>&1)"
+	# Skipped (busy, still changing): try again next minute, not in N,
+	# and keep the log for what actually happened.
+	grep -qE "skipping this round|saving later" <<<"$out" && continue
 	n=0
-	sandbox-save --skip-checks 2>&1 | grep -v -E "^nothing to push$" | sed "s/^/$(date '+%Y-%m-%d %H:%M:%S') /" || true
+	grep -v -E "^nothing to push$" <<<"$out" | sed "s/^/$(date '+%Y-%m-%d %H:%M:%S') /" || true
 done

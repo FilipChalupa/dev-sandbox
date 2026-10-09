@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Usage: sandbox-git-unlock [--check | --force]
+# Removes lock files git left behind (.git/index.lock and friends) when no
+# git process is running. A git killed in the middle of its work (a container
+# stopped during autosave, a timed-out save) leaves its lock behind and every
+# later git command fails with "Unable to create '.../index.lock': File
+# exists" — on 9. 10. 2026 that stopped the whole sandbox at start, Claude
+# included, and the person could not delete the file: the project lives in
+# a Docker volume.
+#
+# Without options only locks older than SANDBOX_GIT_LOCK_STALE_SECONDS
+# (default 120) go: a younger one probably belongs to a git that is just
+# finishing. --force removes them regardless of age (still never while git
+# runs) — used at container start and by the "Fix" button. --check only
+# reports. Prints one line; exit 0 = no lock left, 1 = a lock remains.
+set -uo pipefail
+source sandbox-lib
+mode="${1:-}"
+stale="${SANDBOX_GIT_LOCK_STALE_SECONDS:-120}"
+cd "$SANDBOX_WORKSPACE" 2>/dev/null && [ -d .git ] || { echo "no repository"; exit 0; }
+
+# objects/ is git's own business (and huge); the locks that block are the
+# index, HEAD, config and refs.
+mapfile -t locks < <(find .git -path .git/objects -prune -o -name '*.lock' -type f -print 2>/dev/null)
+[ "${#locks[@]}" -eq 0 ] && { echo "no git lock"; exit 0; }
+
+now="$(date +%s)"
+oldest=0
+for f in "${locks[@]}"; do
+	age=$((now - $(stat -c %Y "$f" 2>/dev/null || echo "$now")))
+	[ "$age" -gt "$oldest" ] && oldest="$age"
+done
+names="$(printf '%s ' "${locks[@]#.git/}")"
+if pgrep -x git >/dev/null 2>&1; then
+	echo "git is running, lock in use: ${names% }"
+	exit 1
+fi
+if [ "$mode" = "--check" ]; then
+	echo "left behind by a git that did not finish: ${names% } (${oldest} s old)"
+	exit 1
+fi
+if [ "$mode" != "--force" ] && [ "$oldest" -lt "$stale" ]; then
+	echo "fresh lock, leaving it: ${names% } (${oldest} s old)"
+	exit 1
+fi
+rm -f "${locks[@]}"
+log "removed a git lock left behind: ${names% } (${oldest} s old)"
+event git "removed a git lock left behind by an interrupted git command: ${names% } (${oldest} s old)"
+echo "removed: ${names% }"
+exit 0

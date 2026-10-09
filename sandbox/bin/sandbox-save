@@ -1,8 +1,19 @@
 #!/usr/bin/env bash
-# Usage: sandbox-save [--skip-checks] [message]
+# Usage: sandbox-save [--skip-checks] [--auto] [message]
 # Commits everything and pushes the working branch. Used by the autosave loop
-# and by the "Send to developer" button. Refuses to touch a repository in the
-# middle of a merge or rebase.
+# (--auto), by the "Send to developer" button and by Claude. Refuses to touch
+# a repository in the middle of a merge or rebase.
+#
+# One save at a time (9. 10. 2026): the three used to run into each other
+# and a git killed halfway left its index.lock behind, which then blocked
+# every git command. A second save waits for the first (exit 7 after five
+# minutes); --auto skips the round instead (exit 0), and also skips while
+# git is busy (a lock less than two minutes old, usually Claude committing),
+# while dependencies are being installed, and while files are still
+# changing — it saves once nothing changed for SANDBOX_AUTOSAVE_QUIET_SECONDS
+# (default 120), or anyway after SANDBOX_AUTOSAVE_MAX_WAIT_MINUTES (default
+# 30) of postponing. A lock left behind by a git that died is removed first
+# (sandbox-git-unlock). --auto implies --skip-checks.
 #
 # Before pushing it brings in what the server has on the branch (the developer
 # merges main back into it after each takeover): fetch + merge, never rebase.
@@ -17,11 +28,61 @@
 set -uo pipefail
 source sandbox-lib
 skip_checks=0
-if [ "${1:-}" = "--skip-checks" ]; then skip_checks=1; shift; fi
+auto=0
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--skip-checks) skip_checks=1; shift ;;
+		--auto) auto=1; skip_checks=1; shift ;;
+		*) break ;;
+	esac
+done
 cd "$SANDBOX_WORKSPACE" || exit 1
 [ -d .git ] || { echo "not a git repository"; exit 1; }
 if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ] || [ -f .git/MERGE_HEAD ]; then
 	echo "merge or rebase in progress, not saving"; exit 2
+fi
+
+# --- one save at a time ---------------------------------------------------
+exec 8> "$(state_file save.lock)"
+if ! flock -n 8; then
+	[ "$auto" = 1 ] && { echo "another save is running, skipping this round"; exit 0; }
+	echo "another save is running (autosave, the Send button or Claude); waiting for it…"
+	flock -w 300 8 || { echo "the other save is still running after 5 minutes, try again later"; exit 7; }
+fi
+
+# A lock left behind by a git that died goes; a fresh one belongs to a git
+# that is working right now (Claude committing by hand).
+sandbox-git-unlock >/dev/null 2>&1 || true
+if [ -f .git/index.lock ]; then
+	[ "$auto" = 1 ] && { echo "git is busy, skipping this round"; exit 0; }
+	for _ in $(seq 1 30); do [ -f .git/index.lock ] || break; sleep 1; done
+	[ -f .git/index.lock ] && { echo "git is busy with another command (.git/index.lock), try again in a moment"; exit 8; }
+fi
+
+if [ "$auto" = 1 ]; then
+	# An install changes the lockfile and node_modules: not a moment to commit.
+	if ! (flock -n 9) 9> "$(state_file deps.lock)"; then
+		echo "dependencies are being installed, skipping this round"; exit 0
+	fi
+	# Save in a quiet moment, not in the middle of Claude's edits.
+	quiet="${SANDBOX_AUTOSAVE_QUIET_SECONDS:-120}"
+	max_wait=$(( ${SANDBOX_AUTOSAVE_MAX_WAIT_MINUTES:-30} * 60 ))
+	now="$(date +%s)"
+	newest=0
+	while IFS= read -r -d '' entry; do
+		[ "${#entry}" -gt 3 ] || continue
+		t="$(stat -c %Y -- "${entry:3}" 2>/dev/null || echo 0)"
+		[ "$t" -gt "$newest" ] && newest="$t"
+	done < <(git --no-optional-locks status --porcelain -z 2>/dev/null)
+	if [ "$newest" -gt 0 ] && [ $((now - newest)) -lt "$quiet" ]; then
+		since="$(read_state autosave-waiting-since)"
+		[ -n "$since" ] || { since="$now"; write_state autosave-waiting-since "$now"; }
+		if [ $((now - since)) -lt "$max_wait" ]; then
+			echo "files are still changing, saving later"; exit 0
+		fi
+		echo "files keep changing for $(( (now - since) / 60 )) minutes, saving anyway"
+	fi
+	rm -f "$(state_file autosave-waiting-since)"
 fi
 git config user.email >/dev/null 2>&1 || sandbox-git-identity >/dev/null 2>&1 || { echo "no git identity yet (Claude not logged in?)"; exit 3; }
 trap 'sandbox-status-write' EXIT
@@ -42,7 +103,8 @@ if git remote get-url origin >/dev/null 2>&1 && git rev-parse --verify -q HEAD >
 			# The merge may bring new or upgraded packages: install them before
 			# the checks below (they would fail on stale node_modules) and
 			# restart the dev server so the preview runs on them.
-			sandbox-deps --restart --quiet || echo "dependency install failed (see deps.log)"
+			# 8>&-: the restarted project server must not inherit (and hold) the save lock.
+			sandbox-deps --restart --quiet 8>&- || echo "dependency install failed (see deps.log)"
 		else
 			git merge --abort 2>/dev/null || true
 			overwritten="$(git rev-parse --short "origin/$SANDBOX_BRANCH")"

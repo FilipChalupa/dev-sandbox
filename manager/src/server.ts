@@ -322,6 +322,22 @@ app.post('/api/sandboxes/:name/doctor', async (c) => {
 	}
 })
 
+// Repairs the sandbox check offers ("fix" in sandbox-doctor's output). Only
+// known ones: the name picks a fixed command, nothing from the request runs.
+const doctorFixes: Record<string, string[]> = {
+	gitLock: ['sandbox-git-unlock', '--force'],
+}
+app.post('/api/sandboxes/:name/doctor/fix/:fix', async (c) => {
+	const command = doctorFixes[c.req.param('fix')]
+	if (!command) return json({ error: 'Unknown fix' }, 404)
+	try {
+		const r = await dk.run(c.req.param('name'), command, 30_000)
+		return json({ ok: r.code === 0, output: r.output }, r.code === 0 ? 200 : 409)
+	} catch (e) {
+		return fail(e)
+	}
+})
+
 // Backup of everything that is not in git: configs, tokens, instructions.
 app.get('/api/backup', async () => {
 	const sandboxes = []

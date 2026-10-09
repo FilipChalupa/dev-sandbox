@@ -64,9 +64,16 @@ can start sessions in it. Status for the manager is in `/state/status.json`.
   yarn, bun). Runs at start, before `sandbox-dev-start` and after
   `sandbox-save` merges the developer's commits; `--restart` restarts a
   running dev server after an install.
-- `sandbox-save [--skip-checks] [message]`: commit everything and push the
-  working branch; runs the project's `lint` and `typecheck` scripts first
-  and keeps the commit local when they fail.
+- `sandbox-save [--skip-checks] [--auto] [message]`: commit everything and
+  push the working branch; runs the project's `lint` and `typecheck` scripts
+  first and keeps the commit local when they fail. One save at a time: a
+  second one waits for the first. `--auto` (the autosave) skips instead, and
+  also while git is busy, while dependencies install and until the files
+  have not changed for two minutes (at most 30 minutes of postponing).
+- `sandbox-git-unlock [--check|--force]`: remove git lock files
+  (`.git/index.lock`…) left behind by a git that was killed halfway, when no
+  git runs; without `--force` only locks older than two minutes. Runs at
+  start and before every save; the sandbox check offers it as a fix.
 - `sandbox-screenshot [path|url] [out.png] [--mobile]`: render the preview with
   headless Chromium (for Claude to check its work).
 - `sandbox-status`: print the status JSON.
@@ -74,7 +81,8 @@ can start sessions in it. Status for the manager is in `/state/status.json`.
 - `sandbox-remote-check`: is the git remote reachable with the token (also
   runs after start and every six hours).
 - `sandbox-doctor`: one JSON line per health check (login, server, proxy, dev
-  server, git remote, identity, disk, browser tools).
+  server, git remote, git lock, identity, disk, browser tools); a check the
+  card can repair carries `fix`.
 - `sandbox-claude-start`: restart the Claude Remote Control server.
 - `sandbox-node-prepare`: install the Node version from `.nvmrc`,
   `.node-version` or `engines.node` (runs at start).

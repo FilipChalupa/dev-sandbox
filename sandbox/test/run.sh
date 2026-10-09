@@ -152,5 +152,52 @@ check "mcp: info shows the outcome and the event" "$(tail -n 1 <<<"$out" | jq -r
 out="$(mcp '{"jsonrpc":"2.0","id":7,"method":"nope"}')"
 check "mcp: unknown method is an error" "$(jq -r .error.code <<<"$out")" "-32601"
 
+# Git locks left behind (9. 10.): one stopped the whole sandbox at start.
+export SANDBOX_STATE_DIR="$(mktemp -d)" SANDBOX_WORKSPACE="$(mktemp -d)" SANDBOX_BRANCH=sandbox/t
+remote="$(mktemp -d)"; git init -q --bare "$remote" && git --git-dir="$remote" symbolic-ref HEAD refs/heads/sandbox/t
+echo "$SANDBOX_BRANCH" > "$SANDBOX_STATE_DIR/branch"
+cd "$SANDBOX_WORKSPACE" && git init -q -b sandbox/t . && git config user.email s@x && git config user.name s && git config core.hooksPath "$here/hooks"
+echo a > a.txt && git add -A && git commit -qm a && git remote add origin "$remote" && git push -q -u origin sandbox/t
+check "unlock: nothing to do" "$(sandbox-git-unlock)" "no git lock"
+touch .git/index.lock
+rc=0; sandbox-git-unlock >/dev/null || rc=$?
+check "unlock: a fresh lock stays" "$rc$([ -f .git/index.lock ] && echo ' kept')" "1 kept"
+rc=0; sandbox-git-unlock --check >/dev/null || rc=$?
+check "unlock --check reports it" "$rc" "1"
+touch -d '10 minutes ago' .git/index.lock
+sandbox-git-unlock >/dev/null
+check "unlock: an old lock goes" "$([ -f .git/index.lock ] && echo kept || echo gone)" "gone"
+touch .git/index.lock
+sandbox-git-unlock --force >/dev/null
+check "unlock --force: a fresh one too" "$([ -f .git/index.lock ] && echo kept || echo gone)" "gone"
+touch .git/index.lock
+rc=0; repo_url="$remote" sandbox-git-prepare >/dev/null 2>&1 || rc=$?
+check "start: a lock left behind does not stop it" "$rc" "0"
+check "start: the lock is gone" "$([ -f .git/index.lock ] && echo kept || echo gone)" "gone"
+
+# One save at a time: autosave skips, a manual save waits.
+echo b > b.txt
+( flock 8; sleep 2 ) 8> "$SANDBOX_STATE_DIR/save.lock" &
+sleep 0.3
+out="$(sandbox-save --auto 2>&1)"
+check "autosave skips while another save runs" "$(grep -c 'skipping this round' <<<"$out")" "1"
+out="$(sandbox-save --skip-checks "manual" 2>&1)"
+check "manual save waits, then saves" "$(grep -c 'waiting for it' <<<"$out") $(git log -1 --format=%s)" "1 manual"
+echo c > c.txt
+touch .git/index.lock
+out="$(sandbox-save --auto 2>&1)"
+check "autosave skips while git is busy" "$(grep -c 'git is busy' <<<"$out")" "1"
+rm -f .git/index.lock
+out="$(sandbox-save --auto 2>&1)"
+check "autosave waits until files stop changing" "$(grep -c 'saving later' <<<"$out") $(git status --porcelain | wc -l | tr -d ' ')" "1 1"
+touch -d '5 minutes ago' c.txt
+out="$(sandbox-save --auto 2>&1)"
+check "autosave saves in a quiet moment" "$(git status --porcelain | wc -l | tr -d ' ') $(git log -1 --format=%s | cut -c1-13)" "0 wip: autosave"
+echo d > d.txt
+write_state autosave-waiting-since "$(( $(date +%s) - 3600 ))"
+out="$(sandbox-save --auto 2>&1)"
+check "autosave saves anyway after waiting too long" "$(grep -c 'saving anyway' <<<"$out") $(git status --porcelain | wc -l | tr -d ' ')" "1 0"
+cd /
+
 echo
 if [ "$fails" = 0 ]; then echo "all sandbox tests passed"; else echo "$fails sandbox test(s) failed"; exit 1; fi
