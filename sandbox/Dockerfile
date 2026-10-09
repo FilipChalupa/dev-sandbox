@@ -14,13 +14,24 @@ RUN apt-get update \
 	&& rm -rf /var/lib/apt/lists/*
 
 # Caddy: reverse proxy in front of the project's dev server, basic auth for
-# the shared tunnel. Official apt repository, multi-arch.
-RUN curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
-		| gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg \
-	&& curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
-		> /etc/apt/sources.list.d/caddy-stable.list \
-	&& apt-get update && apt-get install -y --no-install-recommends caddy \
-	&& rm -rf /var/lib/apt/lists/*
+# the shared tunnel. The official release binary with its published SHA-512,
+# pinned: the apt repository on Cloudsmith started answering 402 Payment
+# Required (9. 10. 2026) and every image build failed on it.
+ARG CADDY_VERSION=2.11.7
+ARG CADDY_SHA512_AMD64=a7a433a1b133efc3c8d10eb0b99d52a24b5ef5c322dc77f5282182b1c0402139ab83f3a99f0c52409df77d20123fb0b523edad8a66d8f5e49136197bf61ef0e7
+ARG CADDY_SHA512_ARM64=3db36ba90c7a6e8dda40ee3dd71fa08844c76b5fb08f61b31e5e78d2ed38e71c51dc7baed875e50d1ca1279196e84302967237386ae87c91ae9f2aaceada682e
+RUN arch="$(dpkg --print-architecture)" \
+	&& case "$arch" in \
+		amd64) sum="$CADDY_SHA512_AMD64" ;; \
+		arm64) sum="$CADDY_SHA512_ARM64" ;; \
+		*) echo "no Caddy build for $arch" >&2; exit 1 ;; \
+	esac \
+	&& curl -fsSL -o /tmp/caddy.tar.gz \
+		"https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_${arch}.tar.gz" \
+	&& echo "$sum  /tmp/caddy.tar.gz" | sha512sum -c - \
+	&& tar -xzf /tmp/caddy.tar.gz -C /usr/local/bin caddy \
+	&& rm /tmp/caddy.tar.gz \
+	&& caddy version
 
 # cloudflared: quick tunnels (no account needed).
 RUN curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg \
