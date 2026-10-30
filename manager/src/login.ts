@@ -1,6 +1,23 @@
 // Claude login without a terminal: run `claude auth login` in the sandbox,
 // show the person the OAuth link, and pass the code they paste back in.
+import fs from 'node:fs/promises'
+import path from 'node:path'
 import { exec } from './docker.js'
+
+// Who is logged in, read from the shared Claude config dir. When a refresh
+// fails for good (the login expired), the CLI keeps .credentials.json but
+// empties its tokens, and .claude.json keeps the email: only a token counts.
+export async function account(claudeDir: string) {
+	try {
+		const cfg = JSON.parse(await fs.readFile(path.join(claudeDir, '.claude.json'), 'utf8'))
+		const creds = JSON.parse(await fs.readFile(path.join(claudeDir, '.credentials.json'), 'utf8'))
+		const email: string = cfg?.oauthAccount?.emailAddress ?? ''
+		const oauth = creds?.claudeAiOauth
+		return { ok: Boolean(email && (oauth?.refreshToken || oauth?.accessToken)), detail: email }
+	} catch {
+		return { ok: false, detail: '' }
+	}
+}
 
 type Session = {
 	url: string

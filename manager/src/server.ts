@@ -547,15 +547,9 @@ app.get('/api/readiness', async () => {
 	} catch {
 		image = { ok: false, detail: config.image }
 	}
-	let login = { ok: false, detail: '' }
-	try {
-		const cfg = JSON.parse(await fs.readFile(path.join(config.dataDir, '.manager', 'claude', '.claude.json'), 'utf8'))
-		await fs.stat(path.join(config.dataDir, '.manager', 'claude', '.credentials.json'))
-		const email = cfg?.oauthAccount?.emailAddress ?? ''
-		login = { ok: Boolean(email), detail: email }
-	} catch {}
+	const account = await login.account(path.join(config.dataDir, '.manager', 'claude'))
 	const sandboxes = (await store.readAll()).length
-	return json({ docker, helper: { ok: host.helper, detail: host.lanIp || host.hostName }, image, login, sandboxes })
+	return json({ docker, helper: { ok: host.helper, detail: host.lanIp || host.hostName }, image, login: account, sandboxes })
 })
 
 app.get('/api/updates', async () => {
