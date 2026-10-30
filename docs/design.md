@@ -286,6 +286,15 @@ checks the CSRF rules, creates and starts a sandbox, starts a static dev
 server in it, waits for the thumbnail, runs the doctor, checks the backup,
 stops and deletes.
 
+## Releases
+
+Every push to `main` that passes CI publishes the `latest` images; the
+manager offers them as an update. A release is a version tag on top: set
+`version` in `manager/package.json`, commit, then `git tag v1.2.3 && git push
+origin v1.2.3`. CI checks that the tag matches the version, publishes images
+tagged `1.2.3` and creates a GitHub release with the commits since the
+previous tag and `Install sandbox.command`.
+
 ## Findings from the prototype
 
 - Two sandboxes sharing one Claude config dir both connect to Remote Control,

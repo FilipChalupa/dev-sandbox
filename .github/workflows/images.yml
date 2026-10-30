@@ -13,13 +13,13 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
         with:
           version: 9
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -30,12 +30,15 @@ jobs:
         working-directory: manager
       - run: bash sandbox/test/run.sh
       - run: bash -n sandbox/bin/* sandbox/hooks/* installer/*.sh
+      - name: The tag matches the manager version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: test "${GITHUB_REF_NAME#v}" = "$(jq -r .version manager/package.json)"
 
   e2e:
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: docker build -t dev-sandbox sandbox
       - run: docker build -t dev-sandbox-manager manager
       - run: mkdir -p /tmp/sandboxes && bash scripts/e2e.sh docker dev-sandbox dev-sandbox-manager /tmp/sandboxes
@@ -43,7 +46,7 @@ jobs:
   build:
     needs: [test, e2e]
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     strategy:
       matrix:
         include:
@@ -52,23 +55,23 @@ jobs:
           - name: dev-sandbox-manager
             context: manager
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@v7
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=sha
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.context }}
           platforms: linux/amd64,linux/arm64
@@ -78,3 +81,28 @@ jobs:
           build-args: BUILD_SHA=${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  # A version tag (v1.2.3) becomes a GitHub release once its images are
+  # pushed: the commits since the previous tag, and the macOS installer.
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prev="$(git describe --tags --abbrev=0 --match 'v*' "$GITHUB_REF_NAME^" 2>/dev/null || true)"
+          version="${GITHUB_REF_NAME#v}"
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          {
+            echo "Images \`ghcr.io/$owner/dev-sandbox-manager:$version\` and \`ghcr.io/$owner/dev-sandbox:$version\`."
+            echo
+            git log --no-merges --format='- %s' ${prev:+"$prev.."}"$GITHUB_REF_NAME"
+          } > notes.md
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag "installer/Install sandbox.command"
