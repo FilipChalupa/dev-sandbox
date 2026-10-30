@@ -252,7 +252,8 @@ coming through the tunnel.
 ### Installation for the colleague
 
 1. Install Docker Desktop and enable "start when you sign in".
-2. Download `Install sandbox.command` from the releases and double-click it.
+2. Download `Install-sandbox-macOS.zip` from the latest release, unzip it and
+   double-click `Install sandbox.command`.
    It creates `~/Sandboxes`, starts the manager with `--restart unless-stopped`
    and opens `http://localhost:8787`.
 3. In the UI: New sandbox, paste the repository URL and token, Start, log in to
@@ -293,7 +294,8 @@ manager offers them as an update. A release is a version tag on top: set
 `version` in `manager/package.json`, commit, then `git tag v1.2.3 && git push
 origin v1.2.3`. CI checks that the tag matches the version, publishes images
 tagged `1.2.3` and creates a GitHub release with the commits since the
-previous tag and `Install sandbox.command`.
+previous tag and `Install-sandbox-macOS.zip` (the installer zipped, so it
+keeps its executable bit).
 
 ## Findings from the prototype
 

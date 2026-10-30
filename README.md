@@ -38,8 +38,10 @@ manager.
 
 1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
    and turn on "Start Docker Desktop when you sign in".
-2. Either download [`Install sandbox.command`](installer/Install%20sandbox.command)
-   and double-click it, or paste this into Terminal:
+2. Either download [`Install-sandbox-macOS.zip`](https://github.com/FilipChalupa/dev-sandbox/releases/latest/download/Install-sandbox-macOS.zip),
+   unzip it and double-click `Install sandbox.command` (if macOS refuses to
+   open it, click **Open Anyway** in System Settings → Privacy & Security),
+   or paste this into Terminal:
 
    ```sh
    curl -fsSL https://raw.githubusercontent.com/FilipChalupa/dev-sandbox/main/installer/install.sh | bash
