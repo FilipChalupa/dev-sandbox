@@ -135,11 +135,20 @@ with Docker either way.
 
 ## Handing a project to the colleague
 
-1. In Bitbucket open the repository, **Repository settings → Access tokens →
-   Create**, scope *Repositories: read and write*. Copy the token.
+1. Create a token that can read and push to the one repository:
+   - **Bitbucket:** in the repository, **Repository settings → Access
+     tokens → Create**, scope *Repositories: read and write*.
+   - **GitHub:** **Settings → Developer settings → Personal access tokens →
+     Fine-grained tokens → Generate new token**. Under *Repository access*
+     choose *Only select repositories* and pick the repository; under
+     *Permissions* set *Contents* to *Read and write*. For a repository of
+     an organization, the organization may have to approve the token first.
+
+   Copy the token.
 2. Run the manager yourself, click **New sandbox**, fill in the name, the
    repository URL and the token (or paste the URL with the token inside:
-   `https://x-token-auth:TOKEN@bitbucket.org/workspace/repo.git`), click
+   `https://x-token-auth:TOKEN@bitbucket.org/workspace/repo.git` or
+   `https://x-access-token:TOKEN@github.com/owner/repo.git`), click
    **Check access** to be sure the token works, optionally write
    instructions for Claude ("work only in `web/`"), and click
    **Copy as a link for a colleague**. Do not click Create unless you want the
@@ -149,9 +158,11 @@ with Docker either way.
    `http://localhost:8787/#new?name=site&repo=…&token=…` and opens the
    colleague's manager with the form pre-filled; the token never leaves their
    browser except into their own manager.
-4. Optional but recommended: in Bitbucket **Branch permissions**, protect the
-   main branches so the token can only push to `sandbox/*`. The sandbox has
-   its own guard too, but this one is enforced server side.
+4. Optional but recommended: protect the main branches on the server so the
+   token can only push to `sandbox/*`: **Branch permissions** in Bitbucket, a
+   branch ruleset (**Settings → Rules → Rulesets**) on GitHub, where private
+   repositories need a paid plan for it. The sandbox has its own guard too,
+   but this one is enforced server side.
 
 The colleague clicks the link, clicks Create, then Start, logs in to Claude
 once, and opens claude.ai.
