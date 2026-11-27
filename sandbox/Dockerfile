@@ -41,6 +41,21 @@ RUN curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg \
 	&& apt-get update && apt-get install -y --no-install-recommends cloudflared \
 	&& rm -rf /var/lib/apt/lists/*
 
+# Docker Engine and Compose, for sandboxes where the developer turned on
+# "Docker" (the container then runs privileged, see docs/design.md). Projects
+# that run with docker compose (a database, PHP…) start inside the sandbox
+# the same way as on the developer's computer. Without the setting nothing
+# starts dockerd and the CLI just reports that Docker is not running.
+RUN install -m 0755 -d /etc/apt/keyrings \
+	&& curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+	&& echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" \
+		> /etc/apt/sources.list.d/docker.list \
+	&& apt-get update && apt-get install -y --no-install-recommends \
+		docker-ce docker-ce-cli containerd.io docker-compose-plugin docker-buildx-plugin iptables make \
+	&& rm -rf /var/lib/apt/lists/* \
+	&& usermod -aG docker node \
+	&& docker --version && docker compose version
+
 # pnpm through corepack, so projects with a `packageManager` field get the
 # version they ask for. A default pnpm is prepared so it works offline too.
 RUN npm install -g corepack@latest \

@@ -13,7 +13,7 @@ sandbox. The developer on the team reviews and merges what comes out.
 | --- | --- |
 | Host | The colleague's own Mac with Docker Desktop. Nothing else is installed on the host. |
 | Sandbox unit | One sandbox per project. Projects differ in Node version, ports and env, and a Remote Control server is bound to one directory anyway. |
-| Isolation | Docker container. No Docker-in-Docker in v1; projects that need a database are out of scope for now. |
+| Isolation | Docker container, unprivileged by default. Projects that run with docker compose (a database, PHP) get Docker inside the sandbox when the developer turns on **Docker** for that sandbox: the container then runs privileged with its own dockerd (see „Docker inside a sandbox“). Off by default, because it gives up most of the isolation. |
 | Claude Code | Runs inside the container as `claude remote-control`, permission mode `bypassPermissions`. The colleague cannot judge permission prompts, so the container is the safety boundary. |
 | Claude account | The colleague's own paid account (Pro, Max, or a seat on a Team or Enterprise plan). On Team and Enterprise plans an owner must enable Remote Control in the Claude Code admin settings. Login is shared between sandboxes through a shared config directory. |
 | UI for the colleague | claude.ai/code or the Claude mobile app for talking to Claude. A small local web UI (the manager) for creating, starting and stopping sandboxes. No terminal. |
@@ -259,6 +259,36 @@ coming through the tunnel.
 3. In the UI: New sandbox, paste the repository URL and token, Start, log in to
    Claude in the embedded terminal, click "Open in claude.ai/code".
 
+## Docker inside a sandbox
+
+Some projects run only with docker compose: a PHP CMS with MariaDB, a mail
+catcher. The sandbox image has Docker Engine and Compose; the **Docker**
+setting of a sandbox (off by default) makes the manager create the
+container privileged, mount a volume of its own at `/var/lib/docker`
+(`sandbox-<id>-docker`, removed with `node_modules` on reset and delete)
+and pass `SANDBOX_DOCKER=1`. `sandbox-init` then starts dockerd as root
+(`sandbox-docker-start`: cgroup v2 nesting like moby's `hack/dind`, a
+fallback to legacy iptables), and the sandbox user is in the `docker` group.
+Ports the project's containers publish are on the sandbox's `localhost`, so
+port detection and the preview work unchanged; bind mounts such as
+`.:/app` see the project because dockerd shares the sandbox's file system.
+Claude gets a Docker section in `CLAUDE.local.md`: run the project the way
+the repository says, use `docker compose up` in the foreground as the
+project server (`sandbox-dev-stop` sends Ctrl+C first, which stops the
+containers), and never use the socket, `--privileged` or host namespaces.
+
+What it gives up: whoever controls Docker in a privileged container is root
+in Docker Desktop's VM, where the other sandboxes, their git tokens, the
+shared Claude login and the manager with the host socket live. The Mac
+itself stays behind the VM. The rule for Claude does not change that, it
+only keeps an honest Claude from doing it; a prompt injection could. That
+is why it is a per-sandbox decision of the developer and the form says it.
+Considered and rejected: mounting the host socket (the same, plus every
+container of the host), a database next to the sandbox started by the
+manager (safe, but every stack needs its own support and the project then
+runs differently than on the developer's computer), Sysbox (secure nested
+Docker, but Linux hosts only, not Docker Desktop).
+
 ## Visual check
 
 `scripts/screenshots.sh [docker-cli] [image]` photographs the running manager
@@ -284,8 +314,9 @@ covers the library helpers and the pre-push guard against a bare repository.
 CI runs both before building images, then `scripts/e2e.sh` against real
 Docker on the runner: it starts a manager from the freshly built images,
 checks the CSRF rules, creates and starts a sandbox, starts a static dev
-server in it, waits for the thumbnail, runs the doctor, checks the backup,
-stops and deletes.
+server in it, waits for the thumbnail, runs the doctor, moves the files to
+the folder and back, turns Docker on (privileged, dockerd answers, Claude's
+rules, doctor) and off again, checks the backup, stops and deletes.
 
 ## Releases
 

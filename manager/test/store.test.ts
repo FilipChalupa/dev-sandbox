@@ -76,6 +76,17 @@ describe('sandbox store', () => {
 		expect(old.volumeId).toBe('old')
 		expect((await store.update('old', { hostFolder: false })).hostFolder).toBe(false)
 	})
+	it('keeps Docker off unless the developer turns it on', async () => {
+		expect((await store.create({ name: 'plain' })).docker).toBe(false)
+		expect((await store.create({ name: 'php', docker: true })).docker).toBe(true)
+		expect((await store.update('plain', { docker: true })).docker).toBe(true)
+		// A config written before the setting existed.
+		const file = path.join(dir, '.manager', 'sandboxes.json')
+		const list = JSON.parse(await fs.readFile(file, 'utf8'))
+		list.push({ name: 'old', repoUrl: '', branch: 'sandbox/old', hostPort: 3009, autosaveMinutes: 10, createdAt: '' })
+		await fs.writeFile(file, JSON.stringify(list))
+		expect((await store.readAll()).find((s) => s.name === 'old')!.docker).toBe(false)
+	})
 	it('does not hand a renamed sandbox volume to a new one', async () => {
 		await store.create({ name: 'a' })
 		await store.rename('a', 'b')

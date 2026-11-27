@@ -179,6 +179,8 @@ function call(name, args) {
 				// installing = the sandbox is installing right now; do not install at the same time.
 				dependencies: st?.deps ?? null,
 				projectFiles: process.env.SANDBOX_HOST_FOLDER === '1' ? 'in a folder on the person\'s computer (slower)' : 'inside Docker',
+				// enabled = the developer allowed Docker here (docker compose works); running = dockerd answers.
+				docker: process.env.SANDBOX_DOCKER === '1' ? { enabled: true, running: fs.existsSync('/var/run/docker.sock') } : { enabled: false },
 				yourLastReport: readJson('claude-report.json', null),
 				requests: readJson('requests.json', []),
 				recentEvents: events,

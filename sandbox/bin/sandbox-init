@@ -57,4 +57,10 @@ if [ -d /import ] && [ -n "$(project_files /import)" ]; then
 	fi
 fi
 
+# Docker inside the sandbox, when the developer allowed it. dockerd stays a
+# root process in the background; everything else runs as the sandbox user.
+if [ "${SANDBOX_DOCKER:-0}" = 1 ]; then
+	sandbox-docker-start || say "starting without Docker, see $state/dockerd.log"
+fi
+
 exec setpriv --reuid=node --regid=node --init-groups sandbox-entrypoint "$@"

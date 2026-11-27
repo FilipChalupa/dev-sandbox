@@ -152,6 +152,17 @@ check "mcp: info shows the outcome and the event" "$(tail -n 1 <<<"$out" | jq -r
 out="$(mcp '{"jsonrpc":"2.0","id":7,"method":"nope"}')"
 check "mcp: unknown method is an error" "$(jq -r .error.code <<<"$out")" "-32601"
 
+# Rules for Claude: the Docker section only where the developer allowed Docker.
+export SANDBOX_STATE_DIR="$(mktemp -d)" SANDBOX_WORKSPACE="$(mktemp -d)" SANDBOX_TEMPLATES_DIR="$here/templates" SANDBOX_PREVIEW_URL=http://localhost:3001
+SANDBOX_DOCKER=0 sandbox-rules-write >/dev/null
+check "rules without Docker" "$(grep -c '^## Docker' "$SANDBOX_WORKSPACE/CLAUDE.local.md")" "0"
+SANDBOX_DOCKER=1 sandbox-rules-write >/dev/null
+check "rules with Docker" "$(grep -c '^## Docker' "$SANDBOX_WORKSPACE/CLAUDE.local.md")" "1"
+check "rules keep the sandbox name" "$(grep -c 'called \*\*t\*\*' "$SANDBOX_WORKSPACE/CLAUDE.local.md")" "1"
+out="$(mcp "$init" '{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"sandbox_info","arguments":{}}}')"
+check "mcp: info says Docker is off" "$(tail -n 1 <<<"$out" | jq -r '.result.content[0].text | fromjson | .docker.enabled')" "false"
+cd /
+
 # Git locks left behind (9. 10.): one stopped the whole sandbox at start.
 export SANDBOX_STATE_DIR="$(mktemp -d)" SANDBOX_WORKSPACE="$(mktemp -d)" SANDBOX_BRANCH=sandbox/t
 remote="$(mktemp -d)"; git init -q --bare "$remote" && git --git-dir="$remote" symbolic-ref HEAD refs/heads/sandbox/t

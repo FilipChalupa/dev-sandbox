@@ -41,4 +41,8 @@ if command -v playwright-mcp >/dev/null && [ -x /usr/bin/chromium ]; then say br
 
 if tunnel_running; then say tunnel true "$(tunnel_url)"; else say tunnel true "not shared"; fi
 
+if [ "${SANDBOX_DOCKER:-0}" = 1 ]; then
+	if v="$(docker version --format '{{.Server.Version}}' 2>/dev/null)"; then say docker true "Docker $v, $(docker ps -q | wc -l | tr -d ' ') containers running"; else say docker false "Docker is allowed but not running, restart the sandbox ($(tail -n 1 "$(state_file dockerd.log)" 2>/dev/null))"; fi
+fi
+
 say node true "$(node --version)$( [ -f .nvmrc ] && printf ', .nvmrc %s' "$(tr -d '[:space:]' < .nvmrc)")"

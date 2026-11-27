@@ -107,6 +107,17 @@ the folder. The installed packages (`node_modules`) stay in Docker either
 way, and downloaded packages are cached once for all sandboxes. Sandboxes
 created before this setting existed keep their folder until you turn it off.
 
+### Projects that need Docker
+
+A project that runs with docker compose (a database, PHP, a mail catcher)
+needs Docker inside the sandbox. Turn on **Allow Docker** in the sandbox
+settings and restart it; Claude then starts the project the way its README
+says. Only for projects that need it: the sandbox then runs as a privileged
+container, so whoever controls Docker in it can also reach the other
+sandboxes, their tokens and the Claude login (the Mac itself stays out of
+reach). The memory goes up to 6 GB, and the first start downloads and
+builds images for a few minutes. Details in [docs/design.md](docs/design.md).
+
 ### Update and uninstall
 
 "Update manager" in the gear menu replaces the manager itself; "Update

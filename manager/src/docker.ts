@@ -21,6 +21,8 @@ const containerName = (name: string) => config.containerPrefix + name
 */
 export const workspaceVolume = (s: Pick<SandboxConfig, 'volumeId'>) => `${config.containerPrefix}${s.volumeId}-workspace`
 export const modulesVolume = (s: Pick<SandboxConfig, 'volumeId'>) => `${config.containerPrefix}${s.volumeId}-node-modules`
+// Images and containers of the Docker inside the sandbox (the "Docker" setting).
+export const dockerVolume = (s: Pick<SandboxConfig, 'volumeId'>) => `${config.containerPrefix}${s.volumeId}-docker`
 export const cacheVolume = 'dev-sandbox-cache'
 // Left in the home folder after the files moved into the volume.
 export const movedMarker = 'MOVED-TO-DOCKER.txt'
@@ -80,7 +82,8 @@ export async function clearCache() {
 }
 
 export async function removeVolumes(s: Pick<SandboxConfig, 'volumeId'>, opts: { workspace: boolean }) {
-	const names = [modulesVolume(s), ...(opts.workspace ? [workspaceVolume(s)] : [])]
+	// The inner Docker's images are a cache like node_modules: they go with it.
+	const names = [modulesVolume(s), dockerVolume(s), ...(opts.workspace ? [workspaceVolume(s)] : [])]
 	for (const n of names) {
 		try {
 			await docker.getVolume(n).remove({ force: true })
@@ -93,7 +96,7 @@ export async function removeVolumes(s: Pick<SandboxConfig, 'volumeId'>, opts: { 
 // Settings that only take effect when the container is created again
 // (limits, restart policy and instructions are applied live, see applyLive).
 export function configFingerprint(s: SandboxConfig) {
-	const relevant = [s.repoUrl, s.gitUsername, s.hostPort, s.hostFolder]
+	const relevant = [s.repoUrl, s.gitUsername, s.hostPort, s.hostFolder, ...(s.docker ? ['docker'] : [])]
 	return createHash('sha1').update(JSON.stringify(relevant)).digest('hex').slice(0, 12)
 }
 
@@ -186,6 +189,7 @@ export async function start(sandbox: SandboxConfig) {
 	else await ensureVolume(workspaceVolume(sandbox), sandbox.name)
 	await ensureVolume(modulesVolume(sandbox), sandbox.name)
 	await ensureVolume(cacheVolume, '')
+	if (sandbox.docker) await ensureVolume(dockerVolume(sandbox), sandbox.name)
 	const binds = sandbox.hostFolder
 		? [`${hostWorkspace}:${ws}`, ...((await volumeExists(workspaceVolume(sandbox))) ? [`${workspaceVolume(sandbox)}:/import`] : [])]
 		: [`${workspaceVolume(sandbox)}:${ws}`, ...((await hostFolderHasFiles(sandbox.name)) ? [`${hostWorkspace}:/import`] : [])]
@@ -203,6 +207,7 @@ export async function start(sandbox: SandboxConfig) {
 			`SANDBOX_AUTOSAVE_MINUTES=${sandbox.autosaveMinutes}`,
 			`SANDBOX_PREVIEW_URL=http://localhost:${sandbox.hostPort}`,
 			`SANDBOX_HOST_FOLDER=${sandbox.hostFolder ? 1 : 0}`,
+			`SANDBOX_DOCKER=${sandbox.docker ? 1 : 0}`,
 			// Package managers keep their downloads in the shared cache volume
 			// (pnpm used to put its store into the project as .pnpm-store).
 			'npm_config_store_dir=/cache/pnpm-store',
@@ -218,7 +223,11 @@ export async function start(sandbox: SandboxConfig) {
 				`${cacheVolume}:/cache`,
 				`${hostManagerDir(sandbox.name)}:/state`,
 				`${hostManagerDir('claude')}:/home/node/.claude`,
+				...(sandbox.docker ? [`${dockerVolume(sandbox)}:/var/lib/docker`] : []),
 			],
+			// dockerd inside needs it (cgroups, networks, mounts). See the
+			// docker setting in store.ts for what that gives up.
+			Privileged: sandbox.docker,
 			PortBindings: {
 				'8080/tcp': [{ HostIp: '127.0.0.1', HostPort: String(sandbox.hostPort) }],
 				// The basic-auth listener on all interfaces, for phones on the same

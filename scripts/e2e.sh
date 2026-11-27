@@ -19,7 +19,7 @@ H='x-sandbox-manager: 1'
 cleanup() {
 	$DOCKER exec $NAME node -e "fetch('http://localhost:8787/api/sandboxes/e2e?files=1',{method:'DELETE',headers:{'x-sandbox-manager':'1'}}).catch(()=>{})" >/dev/null 2>&1 || true
 	$DOCKER rm -f $NAME sandbox-e2e >/dev/null 2>&1 || true
-	$DOCKER volume rm sandbox-e2e-workspace sandbox-e2e-node-modules >/dev/null 2>&1 || true
+	$DOCKER volume rm sandbox-e2e-workspace sandbox-e2e-node-modules sandbox-e2e-docker >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 fail() { echo "FAIL: $*" >&2; $DOCKER logs $NAME 2>&1 | tail -20 >&2; $DOCKER logs sandbox-e2e 2>&1 | tail -20 >&2 || true; exit 1; }
@@ -92,6 +92,24 @@ $DOCKER exec $NAME test ! -e /sandboxes/e2e/index.html || fail "old copy left in
 for _ in $(seq 1 30); do st="$(status_of)"; grep -q '"dev":true' <<<"$st" && break; sleep 2; done
 grep -q '"dev":true' <<<"$st" || fail "the project server Claude set up did not come back after a restart: $st"
 
+echo "== docker inside the sandbox, only when allowed"
+$DOCKER exec -u node sandbox-e2e docker info >/dev/null 2>&1 && fail "Docker must not run without the setting"
+[ "$($DOCKER inspect -f '{{.HostConfig.Privileged}}' sandbox-e2e)" = false ] || fail "privileged without the Docker setting"
+api PATCH /sandboxes/e2e '{"docker":true}' | grep -q '"settingsPending":true' || fail "the Docker setting should ask for a restart"
+api POST /sandboxes/e2e/start | grep -q '^200' || fail "restart with Docker"
+wait_running
+[ "$($DOCKER inspect -f '{{.HostConfig.Privileged}}' sandbox-e2e)" = true ] || fail "not privileged with the Docker setting"
+$DOCKER volume inspect sandbox-e2e-docker >/dev/null || fail "no volume for the inner Docker"
+for _ in $(seq 1 30); do $DOCKER exec -u node sandbox-e2e docker info >/dev/null 2>&1 && break; sleep 2; done
+$DOCKER exec -u node sandbox-e2e docker info >/dev/null 2>&1 || fail "Docker inside the sandbox is not running: $($DOCKER exec sandbox-e2e tail -n 5 /state/dockerd.log)"
+for _ in $(seq 1 20); do $DOCKER exec -u node sandbox-e2e grep -q '^## Docker' /workspace/e2e/CLAUDE.local.md 2>/dev/null && break; sleep 2; done
+$DOCKER exec -u node sandbox-e2e grep -q '^## Docker' /workspace/e2e/CLAUDE.local.md || fail "Claude's rules lack the Docker section"
+api POST /sandboxes/e2e/doctor | grep -q '"check":"docker","ok":true' || fail "doctor does not see Docker"
+api PATCH /sandboxes/e2e '{"docker":false}' >/dev/null
+api POST /sandboxes/e2e/start | grep -q '^200' || fail "restart without Docker"
+wait_running
+[ "$($DOCKER inspect -f '{{.HostConfig.Privileged}}' sandbox-e2e)" = false ] || fail "still privileged after turning Docker off"
+
 echo "== storage in diagnostics, clearing the package cache"
 api GET /diagnostics | grep -q '"name":"sandbox-e2e-workspace"' || fail "volume sizes missing in diagnostics"
 api POST /cache/clear | grep -q '^200' || fail "clearing the cache"
@@ -105,4 +123,5 @@ sleep 2
 grep -q '"running":false' <<<"$(status_of)" || fail "still running"
 api DELETE '/sandboxes/e2e?files=1' | grep -q '^200' || fail "delete"
 ! $DOCKER volume inspect sandbox-e2e-workspace >/dev/null 2>&1 || fail "volume left after deleting with files"
+! $DOCKER volume inspect sandbox-e2e-docker >/dev/null 2>&1 || fail "inner Docker volume left after deleting"
 echo "all e2e checks passed"

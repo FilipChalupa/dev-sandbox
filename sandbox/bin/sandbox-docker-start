@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Starts the Docker Engine inside the sandbox. Runs as root from sandbox-init,
+# only when the developer turned on "Docker" for this sandbox
+# (SANDBOX_DOCKER=1): the manager then creates the container privileged and
+# mounts a volume of its own at /var/lib/docker for images and containers.
+# The sandbox user is in the docker group and uses the socket directly.
+# Exit 1 when dockerd does not come up; the sandbox starts anyway.
+set -uo pipefail
+log="${SANDBOX_STATE_DIR:-/state}/dockerd.log"
+say() { printf '[sandbox %s] %s\n' "$(date '+%H:%M:%S')" "$*"; }
+
+if docker info >/dev/null 2>&1; then
+	echo "docker is running already"
+	exit 0
+fi
+
+# Privileged containers can write to /sys/fs/cgroup; without it dockerd
+# cannot run containers and the reason in its log is cryptic.
+if ! mkdir -p /sys/fs/cgroup/sandbox-probe 2>/dev/null; then
+	say "DOCKER NOT AVAILABLE: the container is not privileged (turn on Docker in the sandbox settings and restart)"
+	exit 1
+fi
+rmdir /sys/fs/cgroup/sandbox-probe
+
+# cgroup v2: processes in the root cgroup keep its controllers from being
+# delegated, so move them into a child first (what moby's hack/dind does).
+if [ -f /sys/fs/cgroup/cgroup.controllers ]; then
+	mkdir -p /sys/fs/cgroup/init
+	xargs -rn1 < /sys/fs/cgroup/cgroup.procs > /sys/fs/cgroup/init/cgroup.procs 2>/dev/null || true
+	sed -e 's/ / +/g' -e 's/^/+/' < /sys/fs/cgroup/cgroup.controllers > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null || true
+fi
+
+# Some kernels (older Docker Desktop VMs) have no nf_tables: fall back to
+# the legacy iptables, or dockerd cannot set up its networks.
+if ! iptables -nL >/dev/null 2>&1 && [ -x /usr/sbin/iptables-legacy ]; then
+	update-alternatives --set iptables /usr/sbin/iptables-legacy >/dev/null
+	update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy >/dev/null
+fi
+
+say "starting Docker inside the sandbox…"
+: > "$log"
+nohup dockerd --host=unix:///var/run/docker.sock --group docker >> "$log" 2>&1 &
+
+for _ in $(seq 1 60); do
+	if docker info >/dev/null 2>&1; then
+		say "Docker is running ($(docker version --format '{{.Server.Version}}' 2>/dev/null))"
+		exit 0
+	fi
+	sleep 1
+done
+say "DOCKER DID NOT START, last lines of $log:"
+tail -n 15 "$log"
+exit 1

@@ -20,6 +20,11 @@ export type SandboxConfig = {
 	// Explorer). Off: the files live in a Docker volume, which is many times
 	// faster on a Mac and on Windows (installs, dev servers, git).
 	hostFolder: boolean
+	// Docker inside the sandbox for projects that run with docker compose.
+	// The container then runs privileged: whoever controls Docker in it is
+	// root in Docker's VM, where the other sandboxes, the tokens and the
+	// Claude login live too. Off by default, the developer turns it on.
+	docker: boolean
 	// Name part of the Docker volumes; stays the same through a rename.
 	volumeId: string
 	createdAt: string
@@ -34,7 +39,7 @@ export async function readAll(): Promise<SandboxConfig[]> {
 		const list = JSON.parse(await fs.readFile(file(), 'utf8')) as Partial<SandboxConfig>[]
 		return list
 			// Sandboxes from before the volumes kept their files in the folder.
-			.map((s, i) => ({ ...defaults, autostart: false, gitUsername: '', instructions: '', order: i, hostFolder: true, volumeId: s.name, ...s }) as SandboxConfig)
+			.map((s, i) => ({ ...defaults, autostart: false, gitUsername: '', instructions: '', order: i, hostFolder: true, docker: false, volumeId: s.name, ...s }) as SandboxConfig)
 			.sort((a, b) => a.order - b.order)
 	} catch {
 		return []
@@ -100,6 +105,7 @@ export async function create(input: Partial<SandboxConfig> & { name: string; tok
 		idleStopHours: input.idleStopHours ?? defaults.idleStopHours,
 		lanPreview: input.lanPreview ?? defaults.lanPreview,
 		hostFolder: input.hostFolder ?? false,
+		docker: input.docker ?? false,
 		volumeId,
 		createdAt: new Date().toISOString(),
 	}
@@ -138,6 +144,7 @@ export async function update(name: string, patch: Partial<SandboxConfig> & { tok
 	if (patch.idleStopHours !== undefined) sandbox.idleStopHours = Math.max(0, Number(patch.idleStopHours) || 0)
 	if (patch.lanPreview !== undefined) sandbox.lanPreview = Boolean(patch.lanPreview)
 	if (patch.hostFolder !== undefined) sandbox.hostFolder = Boolean(patch.hostFolder)
+	if (patch.docker !== undefined) sandbox.docker = Boolean(patch.docker)
 	if (patch.token !== undefined) await setToken(name, patch.token)
 	await writeAll(list)
 	return sandbox

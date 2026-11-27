@@ -1510,6 +1510,7 @@ function SandboxForm({ existing, initial, hostDir, onSubmit, onCancel }: { exist
 	const [idleStopHours, setIdleStopHours] = useState(existing?.idleStopHours ?? 4)
 	const [lanPreview, setLanPreview] = useState(existing?.lanPreview ?? true)
 	const [hostFolder, setHostFolder] = useState(existing?.hostFolder ?? false)
+	const [docker, setDocker] = useState(existing?.docker ?? false)
 	const [instructions, setInstructions] = useState(existing?.instructions ?? initial?.instructions ?? '')
 	const [startNow, setStartNow] = useState(true)
 	const [busy, setBusy] = useLocalLoading()
@@ -1544,7 +1545,7 @@ function SandboxForm({ existing, initial, hostDir, onSubmit, onCancel }: { exist
 	const submit = async (e: FormEvent) => {
 		e.preventDefault()
 		setBusy(true)
-		const body: Record<string, unknown> = { repoUrl, branch: branch || undefined, autostart, memoryGb, cpus, idleStopHours, lanPreview, hostFolder, instructions }
+		const body: Record<string, unknown> = { repoUrl, branch: branch || undefined, autostart, memoryGb, cpus, idleStopHours, lanPreview, hostFolder, docker, instructions }
 		if (!existing) {
 			body.name = name
 			body.startNow = startNow
@@ -1611,6 +1612,10 @@ function SandboxForm({ existing, initial, hostDir, onSubmit, onCancel }: { exist
 					<input type="checkbox" checked={hostFolder} onChange={(e) => setHostFolder(e.target.checked)} /> {t('hostFolder')}
 				</label>
 				<small>{t('hostFolderHint', { path: folderPath(hostDir, name || 'name') })}{existing && existing.hostFolder !== hostFolder ? ' ' + t('hostFolderMove') : ''}</small>
+				<label className="check">
+					<input type="checkbox" checked={docker} onChange={(e) => { setDocker(e.target.checked); if (e.target.checked && memoryGb < 6) setMemoryGb(6) }} /> {t('dockerAllow')}
+				</label>
+				<small>{t('dockerAllowHint')}{existing && existing.docker !== docker ? ' ' + t('dockerAllowRestart') : ''}</small>
 				<label>{t('idleStop')}<input type="number" min={0} step={1} value={idleStopHours} onChange={(e) => setIdleStopHours(Number(e.target.value))} /></label>
 				</fieldset>
 				<fieldset>

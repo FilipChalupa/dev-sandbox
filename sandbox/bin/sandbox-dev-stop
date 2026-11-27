@@ -1,8 +1,16 @@
 #!/usr/bin/env bash
-# Stops the dev server started by sandbox-dev-start.
+# Stops the dev server started by sandbox-dev-start. Ctrl+C first, the way a
+# person stops it in a terminal: `docker compose up` then stops the project's
+# containers too, and dev servers get to clean up. Only when it does not end
+# within 20 s is the session killed.
 source sandbox-lib
 if tmux has-session -t dev 2>/dev/null; then
-	tmux kill-session -t dev
+	tmux send-keys -t dev C-c
+	for _ in $(seq 1 20); do
+		tmux has-session -t dev 2>/dev/null || break
+		sleep 1
+	done
+	tmux kill-session -t dev 2>/dev/null
 	sleep 1
 	sandbox-status-write
 	echo "dev server stopped"
