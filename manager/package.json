@@ -1,6 +1,6 @@
 {
 	"name": "dev-sandbox-manager",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"private": true,
 	"type": "module",
 	"description": "Web UI that creates, starts and stops dev sandboxes through the Docker API",
